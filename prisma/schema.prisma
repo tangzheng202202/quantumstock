@@ -1,0 +1,253 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ========== Market Data ==========
+
+model Stock {
+  id          String   @id @default(cuid())
+  symbol      String   @unique
+  name        String
+  nameCn      String?
+  market      String   // SSE, SZSE, HKEX, NASDAQ, NYSE, CRYPTO
+  sector      String?
+  industry    String?
+  marketCap   Float?
+  currency    String   @default("CNY")
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  quotes      Quote[]
+  financials  Financial[]
+  watchlists  WatchlistItem[]
+  analyses    AnalysisReport[]
+  alerts      Alert[]
+  positions   Position[]
+
+  @@index([market])
+  @@index([sector])
+  @@index([symbol])
+}
+
+model Quote {
+  id        String   @id @default(cuid())
+  stockId   String
+  timestamp DateTime
+  open      Float
+  high      Float
+  low       Float
+  close     Float
+  volume    BigInt
+  amount    Float?
+  interval  String   @default("1d") // 1m, 5m, 15m, 30m, 1h, 4h, 1d, 1w
+
+  stock     Stock    @relation(fields: [stockId], references: [id], onDelete: Cascade)
+
+  @@unique([stockId, timestamp, interval])
+  @@index([stockId, timestamp])
+}
+
+model Financial {
+  id           String   @id @default(cuid())
+  stockId      String
+  reportDate   DateTime
+  reportType   String   // Q1, Q2, Q3, Q4, Annual
+  revenue      Float?
+  netProfit    Float?
+  eps          Float?
+  pe           Float?
+  pb           Float?
+  roe          Float?
+  debtRatio    Float?
+  grossMargin  Float?
+  netMargin    Float?
+  yoyRevenue   Float?
+  yoyProfit    Float?
+
+  stock        Stock    @relation(fields: [stockId], references: [id], onDelete: Cascade)
+
+  @@unique([stockId, reportDate, reportType])
+}
+
+// ========== User Data ==========
+
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  name          String?
+  preferences   Json     @default("{}")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  watchlists    Watchlist[]
+  portfolios    Portfolio[]
+  strategies    Strategy[]
+  alerts        Alert[]
+  apiKeys       ApiKey[]
+}
+
+model Watchlist {
+  id        String   @id @default(cuid())
+  name      String
+  userId    String
+  isDefault Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items     WatchlistItem[]
+}
+
+model WatchlistItem {
+  id          String   @id @default(cuid())
+  watchlistId String
+  stockId     String
+  addedAt     DateTime @default(now())
+  notes       String?
+
+  watchlist   Watchlist @relation(fields: [watchlistId], references: [id], onDelete: Cascade)
+  stock       Stock     @relation(fields: [stockId], references: [id], onDelete: Cascade)
+
+  @@unique([watchlistId, stockId])
+}
+
+model Portfolio {
+  id          String   @id @default(cuid())
+  name        String
+  userId      String
+  description String?
+  currency    String   @default("CNY")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  positions   Position[]
+  histories   PortfolioHistory[]
+}
+
+model Position {
+  id          String   @id @default(cuid())
+  portfolioId String
+  stockId     String
+  quantity    Float
+  avgCost     Float
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  portfolio   Portfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+  stock       Stock     @relation(fields: [stockId], references: [id], onDelete: Cascade)
+}
+
+model PortfolioHistory {
+  id          String   @id @default(cuid())
+  portfolioId String
+  date        DateTime
+  totalValue  Float
+  cash        Float
+  pnl         Float
+  pnlPercent  Float
+
+  portfolio   Portfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+
+  @@unique([portfolioId, date])
+}
+
+// ========== Analysis & Strategy ==========
+
+model AnalysisReport {
+  id          String   @id @default(cuid())
+  stockId     String
+  userId      String?
+  modelId     String   // claude, gpt4, deepseek, etc.
+  skills      String[] // enabled skill names
+  content     String   // full analysis text (markdown)
+  rating      Int?     // 1-5 rating
+  confidence  Float?   // 0-1
+  createdAt   DateTime @default(now())
+
+  stock       Stock    @relation(fields: [stockId], references: [id], onDelete: Cascade)
+
+  @@index([stockId, createdAt])
+}
+
+model Strategy {
+  id          String   @id @default(cuid())
+  name        String
+  userId      String
+  description String?
+  code        String   // strategy definition JSON
+  type        String   // builtin, custom
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  backtests   BacktestResult[]
+
+  @@index([userId])
+}
+
+model BacktestResult {
+  id          String   @id @default(cuid())
+  strategyId  String
+  startDate   DateTime
+  endDate     DateTime
+  initialCapital Float
+  finalEquity   Float
+  totalReturn   Float
+  annualReturn  Float
+  maxDrawdown   Float
+  sharpeRatio   Float
+  winRate       Float
+  totalTrades   Int
+  params        Json     @default("{}")
+  equityCurve   Json?    // [{date, value}]
+  trades        Json?    // [{date, type, price, quantity, pnl}]
+  createdAt     DateTime @default(now())
+
+  strategy      Strategy @relation(fields: [strategyId], references: [id], onDelete: Cascade)
+
+  @@index([strategyId])
+}
+
+// ========== Alerts ==========
+
+model Alert {
+  id          String    @id @default(cuid())
+  userId      String
+  stockId     String?
+  type        String    // price, indicator, volume, news
+  condition   String    // above, below, cross_above, cross_below
+  value       Float?
+  indicator   String?   // MA, RSI, MACD, etc.
+  params      Json      @default("{}")
+  isEnabled   Boolean   @default(true)
+  isTriggered Boolean   @default(false)
+  triggeredAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  stock       Stock?    @relation(fields: [stockId], references: [id], onDelete: SetNull)
+}
+
+// ========== API Keys ==========
+
+model ApiKey {
+  id        String   @id @default(cuid())
+  userId    String
+  provider  String   // claude, openai, deepseek, etc.
+  keyHash   String   // hashed API key
+  maskedKey String   // sk-...xxxx
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, provider])
+}
