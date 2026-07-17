@@ -2,7 +2,6 @@
 
 import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
-import Link from "next/link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ANALYSIS_SKILLS, AVAILABLE_MODELS } from "@/lib/ai/client";
 import { KNOWN_STOCKS, searchStocks } from "@/lib/data/market";
@@ -18,57 +17,10 @@ import {
 } from "lucide-react";
 import { cn, sanitizeHtml } from "@/lib/utils";
 import { loadAPIKeys } from "@/lib/storage/api-keys";
-import { saveReport, getReportHistory, deleteReport } from "@/lib/storage/report-history";
-import type { AIProvider, StockInfo } from "@/types";
+import { saveReport, deleteReport } from "@/lib/storage/report-history";
+import { useReportHistory } from "@/lib/hooks/useReportHistory";
+import type { StockInfo } from "@/types";
 
-// Mock analysis result for demonstration
-const MOCK_RESULT = `### 1. Executive Summary
-贵州茅台(600519)当前处于中期调整尾部，估值回归合理区间。白酒行业消费升级趋势未改，但短期受宏观经济影响增速放缓。建议逢低布局，目标价1800-1900元。
-
-### 2. Technical Analysis
-- **趋势判断**: 日线级别处于下降通道上沿，周线级别企稳于1600元支撑位
-- **关键支撑**: 1580元(120日均线), 1500元(前低)
-- **关键阻力**: 1720元(60日均线), 1800元(前期平台)
-- **MACD**: 日线MACD在零轴下方金叉，周线即将金叉
-- **RSI(14)**: 45.6，中性偏弱
-- **量价关系**: 近期下跌缩量，反弹放量，底部吸筹迹象明显
-
-### 3. Fundamental Analysis
-- **估值水平**: PE 28.5x (低于5年均值33x)，PB 8.2x
-- **盈利质量**: ROE 31.2%，毛利率92.1%，净利率52.3%
-- **现金流**: 自由现金流/净利润比率98%，现金流质量优秀
-- **成长性**: 3年营收CAGR 14.2%，净利润CAGR 16.8%
-
-### 4. Risk Assessment
-- **主要风险**: 消费税改革政策不确定性、白酒需求疲软
-- **估值风险**: 历史PE区间20-45x，当前处于中低位
-- **Beta**: 0.65，低波动防御属性
-
-### 5. Industry & Competitive Position
-- **行业地位**: 白酒行业绝对龙头，品牌护城河极深
-- **"卖铲子"属性**: 否。茅台是品牌消费公司，非产业链工具供应商
-- **竞争格局**: 高端白酒寡头垄断，茅台占据超50%高端市场份额
-
-### 6. AI Rating & Confidence
-- **综合评级**: ⭐⭐⭐⭐ (4/5)
-- **置信度**: 78%
-
-### 7. Key Catalysts & Risks
-**催化剂**:
-1. 中秋国庆旺季动销超预期
-2. 出厂价提价预期
-3. 直销占比持续提升带动利润率改善
-
-**风险**:
-1. 消费税改革增加税负
-2. 宏观经济下行压制商务消费
-3. 年轻群体白酒消费意愿下降
-
-### 8. Recommendation
-**建议**: 逢低分批建仓
-**短期目标**: 1720元（60日均线突破）
-**中期目标**: 1850元（回归合理估值）
-**止损位**: 1500元（跌破前低止损）`;
 
 export default function AIAnalysisPage() {
   // useSearchParams() requires a Suspense boundary during prerendering.
@@ -95,7 +47,7 @@ function AIAnalysisContent() {
   ]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [result, setResult] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"config" | "result">("config");
+  const [, setActiveTab] = useState<"config" | "result">("config");
   const [stockSearch, setStockSearch] = useState("");
   const [searchResults, setSearchResults] = useState<StockInfo[]>([]);
   const [searching, setSearching] = useState(false);
@@ -125,12 +77,13 @@ function AIAnalysisContent() {
     });
   }, [searchParams]);
 
+  // Derived: never show stale results when the input is cleared (avoids
+  // clearing state synchronously inside the effect below).
+  const visibleResults = stockSearch.trim().length < 1 ? [] : searchResults;
+
   // Real-time stock search (debounced)
   useEffect(() => {
-    if (stockSearch.trim().length < 1) {
-      setSearchResults([]);
-      return;
-    }
+    if (stockSearch.trim().length < 1) return;
     const timer = setTimeout(async () => {
       setSearching(true);
       try {
@@ -170,12 +123,6 @@ function AIAnalysisContent() {
     try {
       // Load saved API keys from localStorage for providers the user has configured
       const savedKeys = loadAPIKeys();
-      const providerKeyMap: Record<string, AIProvider> = {
-        claude: "claude",
-        openai: "openai",
-        deepseek: "deepseek",
-        minimax: "minimax",
-      };
 
       // Build the apiKeys payload: map from provider to key value
       const apiKeysPayload: Record<string, string> = {};
@@ -275,8 +222,8 @@ function AIAnalysisContent() {
                   <div className="flex items-center justify-center py-3">
                     <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
                   </div>
-                ) : searchResults.length > 0 ? (
-                  searchResults.map((stock) => (
+                ) : visibleResults.length > 0 ? (
+                  visibleResults.map((stock) => (
                   <button
                     key={stock.symbol}
                     onClick={() => setSelectedStock(stock)}
@@ -538,7 +485,9 @@ ANTHROPIC_API_KEY=sk-ant-xxxxxx`}
                           ))}
                         </div>
                         <p className="text-[10px] text-muted-foreground mt-1">
-                          置信度: {75 + Math.floor(Math.random() * 15)}%
+                          {/* Deterministic pseudo-confidence derived from the model id
+                              (render must stay pure — no Math.random). */}
+                          置信度: {75 + (Array.from(modelId).reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 997, 7) % 15)}%
                         </p>
                       </div>
                     );
@@ -558,17 +507,13 @@ ANTHROPIC_API_KEY=sk-ant-xxxxxx`}
 
 /** Inline report history panel — shows saved analysis reports */
 function ReportHistoryPanel() {
-  const [history, setHistory] = useState(getReportHistory());
+  // Reactive localStorage-backed history (external store — no sync setState).
+  const history = useReportHistory();
   const [viewing, setViewing] = useState<string | null>(null);
   const [showPanel, setShowPanel] = useState(false);
 
-  useEffect(() => {
-    setHistory(getReportHistory());
-  }, []);
-
   const handleDelete = (id: string) => {
     deleteReport(id);
-    setHistory(getReportHistory());
     if (viewing === id) setViewing(null);
   };
 

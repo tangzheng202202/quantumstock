@@ -133,7 +133,7 @@ export default function SectorDetailPage() {
                             <button onClick={(e) => {
                               e.stopPropagation();
                               toggleWatchlist({ symbol: s.symbol, name: s.name, market: s.symbol.startsWith("6") || s.symbol.startsWith("688") ? "SSE" : "SZSE" });
-                              setWlSet(prev => { const n = new Set(prev); n.has(s.symbol) ? n.delete(s.symbol) : n.add(s.symbol); return n; });
+                              setWlSet(prev => { const n = new Set(prev); if (n.has(s.symbol)) n.delete(s.symbol); else n.add(s.symbol); return n; });
                             }} className="p-1 hover:bg-accent rounded" title={isWL ? "取消自选" : "加入自选"}>
                               <Star className={`w-4 h-4 ${isWL ? "text-yellow-500 fill-yellow-500" : "text-muted-foreground"}`} />
                             </button>

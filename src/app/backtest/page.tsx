@@ -68,38 +68,6 @@ const STRATEGIES = [
   },
 ];
 
-// Mock backtest result
-const MOCK_BACKTEST_METRICS = {
-  totalReturn: 156.8,
-  annualReturn: 23.4,
-  maxDrawdown: -18.5,
-  maxDrawdownDuration: 45,
-  sharpeRatio: 1.86,
-  sortinoRatio: 2.34,
-  calmarRatio: 1.26,
-  winRate: 58.3,
-  profitFactor: 2.15,
-  avgWin: 3.2,
-  avgLoss: -2.1,
-  totalTrades: 156,
-  winningTrades: 91,
-  losingTrades: 65,
-  avgHoldDays: 12.5,
-};
-
-const MOCK_EQUITY_CURVE = Array.from({ length: 252 }, (_, i) => ({
-  date: new Date(2023, 0, 1 + i).toISOString().slice(0, 10),
-  value: 1000000 * (1 + (Math.sin(i / 50) * 0.3 + i / 252 * 1.56)),
-}));
-
-const MOCK_TRADES = [
-  { date: "2023-02-15", symbol: "600519", side: "买入", price: 1680.00, quantity: 100, pnl: null, holdDays: null },
-  { date: "2023-03-22", symbol: "600519", side: "卖出", price: 1850.00, quantity: 100, pnl: 17000.00, holdDays: 35 },
-  { date: "2023-04-10", symbol: "300750", side: "买入", price: 220.50, quantity: 500, pnl: null, holdDays: null },
-  { date: "2023-05-18", symbol: "300750", side: "卖出", price: 245.80, quantity: 500, pnl: 12650.00, holdDays: 38 },
-  { date: "2023-06-01", symbol: "AAPL", side: "买入", price: 175.20, quantity: 300, pnl: null, holdDays: null },
-  { date: "2023-07-15", symbol: "AAPL", side: "卖出", price: 195.50, quantity: 300, pnl: 6090.00, holdDays: 44 },
-];
 
 export default function BacktestPage() {
   const [selectedStrategy, setSelectedStrategy] = useState(STRATEGIES[0]);
@@ -401,7 +369,7 @@ export default function BacktestPage() {
                         const step = Math.max(1, Math.floor(result.equityCurve.length / 200));
                         return result.equityCurve
                           .filter((_, i) => i % step === 0)
-                          .map((point, i) => {
+                          .map((point) => {
                             const height = ((point.value - min) / range) * 100;
                             const isProfit = point.value >= 1000000;
                             return (
@@ -458,7 +426,7 @@ export default function BacktestPage() {
                           </td>
                         </tr>
                       ) : (
-                        result.trades.slice(-50).reverse().map((trade, i) => (
+                        result.trades.slice(-50).reverse().map((trade) => (
                         <tr key={`${trade.entryDate}-${trade.exitDate}`} className="border-b border-border hover:bg-accent/50 transition-all">
                           <td className="px-4 py-2.5 text-xs font-mono">{trade.exitDate}</td>
                           <td className="px-4 py-2.5 text-xs font-mono font-medium">{btSymbol}</td>

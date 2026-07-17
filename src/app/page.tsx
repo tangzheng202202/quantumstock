@@ -13,7 +13,7 @@ import { useQuotes, useMarketStats, useWatchlistQuotes } from "@/lib/hooks";
 import { Wifi, WifiOff, ChevronDown, ChevronUp, TrendingUp, TrendingDown } from "lucide-react";
 
 export default function DashboardPage() {
-  const [selectedMarket, setSelectedMarket] = useState<string>("all");
+  const [selectedMarket] = useState<string>("all");
   const [showAllWatchlist, setShowAllWatchlist] = useState(false);
 
   const { tickers, loading, dataSource } = useQuotes();

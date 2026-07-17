@@ -6,11 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { cn, sanitizeHtml } from "@/lib/utils";
 import { loadAPIKeys } from "@/lib/storage/api-keys";
 import {
-  Network,
-  Search,
   ChevronRight,
-  Factory,
-  Truck,
   Wrench,
   Zap,
   Cpu,
@@ -20,7 +16,6 @@ import {
   Loader2,
   AlertCircle,
   TrendingUp,
-  TrendingDown,
 } from "lucide-react";
 
 // Industry chains with real stock symbols
@@ -175,7 +170,7 @@ export default function IndustryChainPage() {
       <div>
         <h1 className="text-2xl font-bold tracking-tight">产业链分析</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          追踪行业上下游关系，识别"卖铲子"公司，发现产业链投资机会
+          追踪行业上下游关系，识别“卖铲子”公司，发现产业链投资机会
         </p>
       </div>
 
@@ -254,7 +249,7 @@ export default function IndustryChainPage() {
                 <CardTitle>卖铲子公司</CardTitle>
               </div>
               <CardDescription>
-                在{selectedChain.name}中，以下公司属于"卖铲子"类型——为该行业提供设备、工具或服务
+                在{selectedChain.name}中，以下公司属于“卖铲子”类型——为该行业提供设备、工具或服务
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -416,12 +411,12 @@ export default function IndustryChainPage() {
                 <div className="rounded-lg bg-primary/5 p-4 border border-primary/10">
                   <p className="text-sm font-medium text-primary mb-1">投资机会</p>
                   <p className="text-xs text-muted-foreground leading-relaxed">
-                    在{selectedChain.name}中，上游设备和材料供应商展现出"卖铲子"特征——
+                    在{selectedChain.name}中，上游设备和材料供应商展现出“卖铲子”特征——
                     无论下游终端竞争格局如何演变，其设备和技术服务需求都将持续增长。
                     建议重点关注国产替代加速的细分领域。
                   </p>
                   <p className="text-xs text-muted-foreground leading-relaxed mt-2">
-                    点击上方"生成 AI 分析"按钮，调用 DeepSeek 对当前产业链进行实时分析。
+                    点击上方“生成 AI 分析”按钮，调用 DeepSeek 对当前产业链进行实时分析。
                     需要先在设置页配置有效的 DeepSeek API Key。
                   </p>
                 </div>

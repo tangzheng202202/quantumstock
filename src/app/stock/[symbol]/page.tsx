@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, TrendingUp, TrendingDown, BarChart3, DollarSign, Activity, RefreshCw, Star } from "lucide-react";
+import { ArrowLeft, TrendingUp, TrendingDown, BarChart3, RefreshCw, Star } from "lucide-react";
 import { CandlestickChart, type OHLCVBar } from "@/components/chart/CandlestickChart";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { isInWatchlist, toggleWatchlist } from "@/lib/storage/watchlist";

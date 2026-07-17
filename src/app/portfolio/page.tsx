@@ -7,16 +7,10 @@ import {
   Briefcase,
   Plus,
   Trash2,
-  TrendingUp,
-  TrendingDown,
-  PieChart,
-  BarChart3,
   Shield,
   ArrowUpRight,
   ArrowDownRight,
-  Minus,
   Loader2,
-  X,
   Upload,
   Download,
 } from "lucide-react";
@@ -135,8 +129,7 @@ export default function PortfolioPage() {
   const totalCost = pricedPositions.reduce((s, p) => s + p.avgCost * p.quantity, 0);
   const totalPnl = totalMV - cash - totalCost;
   const totalPnlPercent = totalCost > 0 ? (totalPnl / totalCost) * 100 : 0;
-  // Fix: dayPnl = sum(marketValue * dayChange%) 
-  const dayPnl = pricedPositions.reduce((s, p) => s + p.marketValue * p.dayChange / 100, 0);
+  // TODO(D11): surface day P&L in the portfolio summary UI  const _dayPnl = pricedPositions.reduce((s, p) => s + p.marketValue * p.dayChange / 100, 0);
   const investedRatio = totalMV > 0 ? (totalMV - cash) / totalMV * 100 : 0;
 
   if (loading) {

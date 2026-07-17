@@ -12,9 +12,7 @@ import {
   ToggleRight,
   AlertCircle,
   TrendingUp,
-  Volume2,
   Loader2,
-  X,
   RefreshCw,
 } from "lucide-react";
 

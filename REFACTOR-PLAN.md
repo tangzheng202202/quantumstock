@@ -33,7 +33,8 @@
 | D8 | 前端 | 页面级组件臃肿（dashboard/stock 详情/ai-analysis 单文件数百行），缺自定义 hooks 抽离 | `app/page.tsx` 等 | 🟢 低 |
 | D9 | 前端 | 30s 轮询 + 全量重渲染，无增量更新/骨架屏精细化 | `app/page.tsx` | 🟢 低 |
 | D10 | 测试 | 仅 lib 纯函数有测试，**API 路由与组件 0 覆盖** | `src/__tests__` | 🟡 中 |
-| D11 | 功能 | `AIQuickInsight` 为硬编码占位；筛选器导出按钮未实现 | 组件层 | 🟡 中 |
+| D11 | 功能 | `AIQuickInsight` 为硬编码占位；筛选器导出按钮未实现；portfolio 当日盈亏已计算未展示 | 组件层 | 🟡 中 |
+| D12 | 前端 | 遗留页面沿用 "fetch-in-effect" 模式，不满足 React Compiler 规则 `react-hooks/set-state-in-effect`（13 处，已降级为 warn）。新增代码已改用订阅/派生状态模式（`useWatchlistQuotes`、`useReportHistory`）；遗留页面待迁移至 SWR / TanStack Query 后恢复 error 级 | `app/**/page.tsx` 等 9 个文件 | 🟢 低 |
 
 ---
 

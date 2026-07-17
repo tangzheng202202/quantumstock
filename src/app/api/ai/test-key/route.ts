@@ -26,7 +26,7 @@ export async function POST(request: Request) {
       if (res.ok) {
         return NextResponse.json({ valid: true });
       }
-      const text = await res.text().catch(() => "");
+      await res.text().catch(() => "");
       return NextResponse.json({
         valid: false,
         error: `DeepSeek 认证失败 (HTTP ${res.status})。请确认 Key 是否正确，以及是否从 platform.deepseek.com 获取。`,

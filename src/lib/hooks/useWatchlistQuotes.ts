@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { fetchQuotes } from "@/lib/data/market";
 import { useWatchlistStore } from "@/lib/stores/watchlist";
 import { usePolling } from "./usePolling";
@@ -65,11 +65,28 @@ export function useWatchlistQuotes(pollMs = 60000): UseWatchlistQuotesResult {
     }
   }, [items]);
 
-  // Poll, and re-fetch immediately when the watchlist contents change.
+  // Poll on an interval; re-fetch immediately when the watchlist changes by
+  // subscribing to the external store (setState happens in the subscription
+  // callback, not synchronously inside an effect body).
   usePolling(refresh, pollMs);
+
+  const refreshRef = useRef(refresh);
   useEffect(() => {
-    if (hydrated) void refresh();
-  }, [refresh, hydrated]);
+    refreshRef.current = refresh;
+  }, [refresh]);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    // Initial load once hydration completes, plus immediate refresh on edits.
+    const t = setTimeout(() => void refreshRef.current(), 0);
+    const unsub = useWatchlistStore.subscribe((state, prev) => {
+      if (state.items !== prev.items) void refreshRef.current();
+    });
+    return () => {
+      clearTimeout(t);
+      unsub();
+    };
+  }, [hydrated]);
 
   return { quotes, loading, hasPersonalWatchlist, refresh };
 }

@@ -56,7 +56,6 @@ describe("EMA", () => {
   it("should apply exponential weighting after seed", () => {
     const data = [2, 4, 6, 8, 10];
     const result = EMA(data, 3);
-    const mult = 2 / (3 + 1); // 0.5
     // EMA[3] = (8 - 4) * 0.5 + 4 = 6
     expect(result[3]).toBe(6);
     // EMA[4] = (10 - 6) * 0.5 + 6 = 8

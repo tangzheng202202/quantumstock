@@ -39,7 +39,7 @@ async function enrichWithMetricsAsync(tickers: TickerData[]): Promise<any[]> {
   for (const t of tickers) {
     let pe: string | null = null;
     let roe: string | null = null;
-    let revenueGrowth: string | null = null;
+    const revenueGrowth: string | null = null;
 
     // Only A-shares have financial data via EastMoney snapshot
     if (/^\d{6}$/.test(t.stock.symbol)) {
@@ -311,7 +311,7 @@ export default function ScreenerPage() {
                       const added = toggleWatchlist({ symbol: stock.symbol, name: stock.name, market: stock.market });
                       setWatchlistSet(prev => {
                         const next = new Set(prev);
-                        added ? next.add(stock.symbol) : next.delete(stock.symbol);
+                        if (added) next.add(stock.symbol); else next.delete(stock.symbol);
                         return next;
                       });
                     }}
@@ -434,7 +434,7 @@ export default function ScreenerPage() {
                         return (
                           <tr key={row.stock.symbol} className="border-b border-border hover:bg-accent/50 transition-all">
                             <td className="px-4 py-3"><input type="checkbox" checked={selectedForBatch.has(row.stock.symbol)} onChange={() => {
-                              setSelectedForBatch(prev => { const n = new Set(prev); n.has(row.stock.symbol) ? n.delete(row.stock.symbol) : n.add(row.stock.symbol); return n; });
+                              setSelectedForBatch(prev => { const n = new Set(prev); if (n.has(row.stock.symbol)) n.delete(row.stock.symbol); else n.add(row.stock.symbol); return n; });
                             }} className="w-3.5 h-3.5" /></td>
                             <td onClick={() => router.push(`/stock/${row.stock.symbol}`)} className="px-4 py-3 text-sm font-mono font-medium cursor-pointer">{row.stock.symbol}</td>
                             <td onClick={() => router.push(`/stock/${row.stock.symbol}`)} className="px-4 py-3 text-sm cursor-pointer">{row.stock.name}</td>
@@ -465,7 +465,7 @@ export default function ScreenerPage() {
                                   const added = toggleWatchlist({ symbol: row.stock.symbol, name: row.stock.name, market: row.stock.market });
                                   setWatchlistSet(prev => {
                                     const next = new Set(prev);
-                                    added ? next.add(row.stock.symbol) : next.delete(row.stock.symbol);
+                                    if (added) next.add(row.stock.symbol); else next.delete(row.stock.symbol);
                                     return next;
                                   });
                                 }}

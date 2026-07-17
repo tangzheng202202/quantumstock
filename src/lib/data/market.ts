@@ -4,7 +4,7 @@
  */
 
 import type { MarketIndex, MarketHeatmapItem, Quote, SectorRotation, StockInfo, TickerData } from "@/types";
-import { fetchSinaQuotes, fetchSinaIndices, smartSearch, POPULAR_A_STOCKS } from "./sina";
+import { POPULAR_A_STOCKS } from "./sina";
 
 // ---- Mock fallback data ----
 

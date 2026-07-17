@@ -32,8 +32,6 @@ interface CandlestickChartProps {
 
 export function CandlestickChart({
   data,
-  symbol,
-  name,
   height = 500,
   showVolume = true,
   onCrosshairMove,
@@ -161,7 +159,7 @@ export function CandlestickChart({
     resizeObserver.observe(container);
 
     return () => resizeObserver.disconnect();
-  }, [data, height, showVolume, onCrosshairMove]);
+  }, [data, height, showVolume, onCrosshairMove, isDark]);
 
   useEffect(() => {
     const cleanup = initChart();

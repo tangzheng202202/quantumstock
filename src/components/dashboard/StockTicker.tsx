@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { cn, formatCurrency, formatPercent, formatLargeNumber } from "@/lib/utils";
+import { cn, formatCurrency, formatLargeNumber } from "@/lib/utils";
 import { TrendingUp, TrendingDown, Minus } from "lucide-react";
 import type { TickerData } from "@/types";
 

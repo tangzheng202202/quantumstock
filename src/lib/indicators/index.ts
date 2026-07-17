@@ -329,9 +329,7 @@ export function multiTimeframeSignals(
   // Daily MA cross (10/30)
   const ma10 = EMA(dailyClose, 10);
   const ma30 = EMA(dailyClose, 30);
-  const crosses = detectCross(ma10, ma30);
   totalCount++;
-  const lastCross = crosses[crosses.length - 1];
   if (ma10[ma10.length - 1] !== null && ma30[ma30.length - 1] !== null) {
     if (ma10[ma10.length - 1]! > ma30[ma30.length - 1]!) {
       details.push({ indicator: "MA(10/30)", signal: "bullish (uptrend)", timeframe: "daily" });

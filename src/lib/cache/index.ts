@@ -10,6 +10,8 @@ interface CacheEntry<T> {
 }
 
 class CacheService {
+  // Heterogeneous store: entries of different payload types share one map.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private store = new Map<string, CacheEntry<any>>();
   /**
    * Get cached data or fetch fresh.

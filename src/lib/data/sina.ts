@@ -275,7 +275,6 @@ export const POPULAR_A_STOCKS: StockInfo[] = [
   { symbol: "300015", name: "爱尔眼科", market: "SZSE", sector: "医疗服务", currency: "CNY" },
 ];
 
-const POPULAR_SYMBOLS = new Set(POPULAR_A_STOCKS.map(s => s.symbol));
 
 /**
  * Smart search: combines offline database with Sina's name resolution.
@@ -299,7 +298,7 @@ export async function smartSearch(query: string): Promise<StockInfo[]> {
 
   // Search local database
   const ql = q.toLowerCase();
-  let results = POPULAR_A_STOCKS.filter(s =>
+  const results = POPULAR_A_STOCKS.filter(s =>
     s.symbol.includes(q) || s.name.toLowerCase().includes(ql)
   );
 

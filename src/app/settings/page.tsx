@@ -6,10 +6,7 @@ import { AVAILABLE_MODELS } from "@/lib/ai/client";
 import { cn } from "@/lib/utils";
 import { saveAPIKeys, loadAPIKeys, testAPIKey } from "@/lib/storage/api-keys";
 import {
-  Settings,
-  Key,
   Brain,
-  Globe,
   Bell,
   Shield,
   Database,
@@ -98,7 +95,6 @@ export default function SettingsPage() {
     }
   };
 
-  const ActiveIcon = SETTINGS_TABS.find((t) => t.id === activeTab)?.icon ?? Settings;
 
   return (
     <div className="flex flex-col gap-6 animate-fade-in max-w-[1200px] mx-auto">
