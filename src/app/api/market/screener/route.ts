@@ -1,5 +1,7 @@
-import { NextRequest, NextResponse } from "next/server";
 import { fetchAllAShares } from "@/lib/data/eastmoney";
+import { withApiHandler } from "@/lib/api/handler";
+import { apiSuccess } from "@/lib/api/response";
+import { screenerQuerySchema, validate } from "@/lib/api/validation";
 
 export const dynamic = "force-dynamic";
 
@@ -7,38 +9,29 @@ export const dynamic = "force-dynamic";
  * GET /api/market/screener?sortBy=changePercent&sortOrder=desc&peMax=15&roeMin=15&limit=200
  * Returns all A-shares with financial data, with optional filters.
  */
-export async function GET(req: NextRequest) {
-  const sortBy = req.nextUrl.searchParams.get("sortBy") ?? "changePercent";
-  const sortOrder = (req.nextUrl.searchParams.get("sortOrder") ?? "desc") as "asc" | "desc";
-  const peMax = req.nextUrl.searchParams.get("peMax");
-  const roeMin = req.nextUrl.searchParams.get("roeMin");
-  const limit = parseInt(req.nextUrl.searchParams.get("limit") ?? "200");
+export const GET = withApiHandler("market/screener", async (req) => {
+  const sp = req.nextUrl.searchParams;
+  const query = validate(screenerQuerySchema, {
+    sortBy: sp.get("sortBy") ?? undefined,
+    sortOrder: sp.get("sortOrder") ?? undefined,
+    peMax: sp.get("peMax") ?? undefined,
+    roeMin: sp.get("roeMin") ?? undefined,
+    limit: sp.get("limit") ?? undefined,
+  });
 
-  try {
-    const data = await fetchAllAShares({
-      sortBy,
-      sortOrder,
-      peMax: peMax ? parseFloat(peMax) : undefined,
-      roeMin: roeMin ? parseFloat(roeMin) : undefined,
-      limit: Math.min(limit, 500),
-    });
+  const data = await fetchAllAShares({
+    sortBy: query.sortBy,
+    sortOrder: query.sortOrder,
+    peMax: query.peMax,
+    roeMin: query.roeMin,
+    limit: query.limit,
+  });
 
-    return NextResponse.json({
-      success: true,
-      data,
-      meta: {
-        source: "eastmoney",
-        count: data.length,
-        sortBy,
-        sortOrder,
-        filters: { peMax: peMax ?? null, roeMin: roeMin ?? null },
-      },
-    });
-  } catch (e) {
-    console.error(`[screener] failed:`, e);
-    return NextResponse.json(
-      { success: false, error: `全量A股数据获取失败: ${e instanceof Error ? e.message : "未知错误"}` },
-      { status: 500 }
-    );
-  }
-}
+  return apiSuccess(data, {
+    source: "eastmoney",
+    count: data.length,
+    sortBy: query.sortBy,
+    sortOrder: query.sortOrder,
+    filters: { peMax: query.peMax ?? null, roeMin: query.roeMin ?? null },
+  });
+});

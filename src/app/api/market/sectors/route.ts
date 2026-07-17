@@ -1,35 +1,34 @@
-import { NextRequest, NextResponse } from "next/server";
 import { fetchIndustrySectors, fetchSectorRotation } from "@/lib/data/eastmoney";
 import { MOCK_HEATMAP, MOCK_SECTOR_ROTATION } from "@/lib/data/market";
+import { withApiHandler } from "@/lib/api/handler";
+import { apiSuccess } from "@/lib/api/response";
+import { sectorDimensionSchema, validate } from "@/lib/api/validation";
 
 export const dynamic = "force-dynamic";
 
 /**
  * GET /api/market/sectors?dimension=change|rotation
- * Returns real-time industry board data from EastMoney.
- * Falls back to mock if EastMoney is unreachable.
+ * Real-time industry board data from EastMoney, mock fallback when unreachable.
  */
-export async function GET(req: NextRequest) {
-  const dimension = req.nextUrl.searchParams.get("dimension") ?? "change";
+export const GET = withApiHandler("market/sectors", async (req) => {
+  const dimension = validate(
+    sectorDimensionSchema,
+    req.nextUrl.searchParams.get("dimension") ?? "change"
+  );
 
   try {
     if (dimension === "rotation") {
       const data = await fetchSectorRotation();
-      if (data.length > 0) {
-        return NextResponse.json({ success: true, data, meta: { source: "eastmoney", count: data.length } });
-      }
-      return NextResponse.json({ success: true, data: MOCK_SECTOR_ROTATION, meta: { source: "mock" } });
+      if (data.length > 0) return apiSuccess(data, { source: "eastmoney", count: data.length });
+      return apiSuccess(MOCK_SECTOR_ROTATION, { source: "mock" });
     }
 
-    // default: change (heatmap)
     const data = await fetchIndustrySectors();
-    if (data.length > 0) {
-      return NextResponse.json({ success: true, data, meta: { source: "eastmoney", count: data.length } });
-    }
-    return NextResponse.json({ success: true, data: MOCK_HEATMAP, meta: { source: "mock" } });
+    if (data.length > 0) return apiSuccess(data, { source: "eastmoney", count: data.length });
+    return apiSuccess(MOCK_HEATMAP, { source: "mock" });
   } catch (e) {
-    console.warn(`[sectors] EastMoney failed: ${e}`);
+    console.warn(`[sectors] EastMoney failed, serving mock: ${e}`);
     const fallback = dimension === "rotation" ? MOCK_SECTOR_ROTATION : MOCK_HEATMAP;
-    return NextResponse.json({ success: true, data: fallback, meta: { source: "mock" } });
+    return apiSuccess(fallback, { source: "mock" });
   }
-}
+});

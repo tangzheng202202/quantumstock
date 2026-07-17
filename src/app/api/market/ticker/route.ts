@@ -1,6 +1,10 @@
-import { NextRequest, NextResponse } from "next/server";
 import { fetchSinaQuotes, POPULAR_A_STOCKS, _resolveSinaCodeForExternal } from "@/lib/data/sina";
 import { fetchYahooQuote } from "@/lib/data/yahoo";
+import { withApiHandler } from "@/lib/api/handler";
+import { apiSuccess } from "@/lib/api/response";
+import { UpstreamError } from "@/lib/api/errors";
+import { symbolSchema, validate } from "@/lib/api/validation";
+import type { StockInfo } from "@/types";
 
 // Re-export the resolver for clarity
 const resolveSinaCode = _resolveSinaCodeForExternal;
@@ -16,11 +20,8 @@ export const dynamic = "force-dynamic";
  *   - 5-digit HK code (00700/09988) → Sina (hk-prefixed)
  *   - Alphabetic US ticker (AAPL/TSLA) → Sina (gb-prefixed) → Yahoo fallback
  */
-export async function GET(req: NextRequest) {
-  const symbol = req.nextUrl.searchParams.get("symbol");
-  if (!symbol) {
-    return NextResponse.json({ success: false, error: "symbol required" }, { status: 400 });
-  }
+export const GET = withApiHandler("market/ticker", async (req) => {
+  const symbol = validate(symbolSchema, req.nextUrl.searchParams.get("symbol"));
 
   // Try Sina first — covers A/HK/US via different prefixes, all callable from China
   const sinaCode = resolveSinaCode(symbol);
@@ -29,9 +30,8 @@ export async function GET(req: NextRequest) {
       const tickers = await fetchSinaQuotes([symbol]);
       if (tickers.length > 0 && tickers[0].quote.close > 0) {
         const ticker = tickers[0];
-        return NextResponse.json({
-          success: true,
-          data: {
+        return apiSuccess(
+          {
             stock: {
               symbol: ticker.stock.symbol,
               name: ticker.stock.name,
@@ -54,8 +54,8 @@ export async function GET(req: NextRequest) {
             },
             updatedAt: Date.now(),
           },
-          meta: { source: "sina" },
-        });
+          { source: "sina" }
+        );
       }
     } catch (e) {
       console.warn(`[ticker] Sina failed for ${symbol}: ${e}`);
@@ -65,17 +65,21 @@ export async function GET(req: NextRequest) {
   // Yahoo fallback (will fail if blocked in mainland China, but works on overseas servers)
   try {
     const q = await fetchYahooQuote(symbol);
-    const info = POPULAR_A_STOCKS.find((s) => s.symbol === symbol) ?? { symbol, name: symbol, market: "UNKNOWN" as const, currency: "USD" };
+    const info: StockInfo = POPULAR_A_STOCKS.find((s) => s.symbol === symbol) ?? {
+      symbol,
+      name: symbol,
+      market: "UNKNOWN",
+      currency: "USD",
+    };
 
-    return NextResponse.json({
-      success: true,
-      data: {
+    return apiSuccess(
+      {
         stock: {
           symbol: info.symbol,
           name: info.name,
-          nameCn: (info as any).nameCn,
+          nameCn: info.nameCn,
           market: info.market,
-          sector: (info as any).sector,
+          sector: info.sector,
           currency: info.currency,
           marketCap: q.marketCap,
         },
@@ -91,13 +95,10 @@ export async function GET(req: NextRequest) {
         },
         updatedAt: Date.now(),
       },
-      meta: { source: "yahoo" },
-    });
+      { source: "yahoo" }
+    );
   } catch (e) {
     console.warn(`[ticker] ${symbol} all sources failed: ${e}`);
-    return NextResponse.json(
-      { success: false, error: `无法获取 ${symbol} 的实时行情。可能原因：股票代码错误或网络异常。` },
-      { status: 502 }
-    );
+    throw new UpstreamError(`无法获取 ${symbol} 的实时行情。可能原因：股票代码错误或网络异常。`);
   }
-}
+});

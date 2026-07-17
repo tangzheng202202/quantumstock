@@ -1,5 +1,8 @@
-import { NextRequest, NextResponse } from "next/server";
 import { fetchAStockFinancials } from "@/lib/data/eastmoney";
+import { withApiHandler } from "@/lib/api/handler";
+import { apiSuccess } from "@/lib/api/response";
+import { NotFoundError } from "@/lib/api/errors";
+import { symbolSchema, validate } from "@/lib/api/validation";
 
 export const dynamic = "force-dynamic";
 
@@ -7,30 +10,11 @@ export const dynamic = "force-dynamic";
  * GET /api/market/financials?symbol=600519
  * Returns real financial metrics for A-share stocks.
  */
-export async function GET(req: NextRequest) {
-  const symbol = req.nextUrl.searchParams.get("symbol");
-  if (!symbol) {
-    return NextResponse.json({ success: false, error: "symbol required" }, { status: 400 });
-  }
+export const GET = withApiHandler("market/financials", async (req) => {
+  const symbol = validate(symbolSchema, req.nextUrl.searchParams.get("symbol"));
 
-  try {
-    const data = await fetchAStockFinancials(symbol);
-    if (!data) {
-      return NextResponse.json({
-        success: false,
-        error: `暂无 ${symbol} 的财务数据。仅支持A股。`,
-      }, { status: 404 });
-    }
-    return NextResponse.json({
-      success: true,
-      data,
-      meta: { source: "eastmoney", symbol },
-    });
-  } catch (e) {
-    console.error(`[financials] ${symbol} failed:`, e);
-    return NextResponse.json(
-      { success: false, error: `获取 ${symbol} 财务数据失败` },
-      { status: 500 }
-    );
-  }
-}
+  const data = await fetchAStockFinancials(symbol);
+  if (!data) throw new NotFoundError(`暂无 ${symbol} 的财务数据。仅支持A股。`);
+
+  return apiSuccess(data, { source: "eastmoney", symbol });
+});

@@ -1,17 +1,14 @@
-import { NextRequest, NextResponse } from "next/server";
 import { smartSearch } from "@/lib/data/sina";
+import { withApiHandler } from "@/lib/api/handler";
+import { apiSuccess } from "@/lib/api/response";
+import { ValidationError } from "@/lib/api/errors";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(req: NextRequest) {
-  const q = req.nextUrl.searchParams.get("q");
-  if (!q || q.length < 1) {
-    return NextResponse.json({ success: false, error: "q required" }, { status: 400 });
-  }
-  try {
-    const results = await smartSearch(q);
-    return NextResponse.json({ success: true, data: results, meta: { query: q, count: results.length } });
-  } catch (e) {
-    return NextResponse.json({ success: false, error: "Search failed" }, { status: 500 });
-  }
-}
+export const GET = withApiHandler("market/search", async (req) => {
+  const q = req.nextUrl.searchParams.get("q")?.trim();
+  if (!q) throw new ValidationError("q required");
+
+  const results = await smartSearch(q);
+  return apiSuccess(results, { query: q, count: results.length });
+});

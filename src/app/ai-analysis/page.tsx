@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -71,6 +71,19 @@ const MOCK_RESULT = `### 1. Executive Summary
 **止损位**: 1500元（跌破前低止损）`;
 
 export default function AIAnalysisPage() {
+  // useSearchParams() requires a Suspense boundary during prerendering.
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center py-24">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    }>
+      <AIAnalysisContent />
+    </Suspense>
+  );
+}
+
+function AIAnalysisContent() {
   const searchParams = useSearchParams();
   const [selectedStock, setSelectedStock] = useState<StockInfo | null>(null);
   const [selectedModels, setSelectedModels] = useState<string[]>(["claude-opus-4"]);
