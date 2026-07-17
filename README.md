@@ -2,6 +2,10 @@
 
 基于 stocks.mastersgo.cc（"股市挖掘机"）的逆向工程，重新设计的更完善的 AI 驱动多市场量化分析平台。
 
+> **文档中心**：[架构文档](docs/ARCHITECTURE.md) · [API 契约](docs/API.md) · [部署指南](docs/DEPLOYMENT.md) · [重构计划与债务清单](REFACTOR-PLAN.md)
+>
+> **质量状态**：`tsc` 0 错误 · ESLint 0 错误 · 115 测试全绿 · 生产构建通过（2026-07 全面重构后）
+
 ## 核心能力
 
 - **AI 多模型分析** — 同时调用 Claude/GPT/DeepSeek/MiniMax 对比分析个股
