@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Brain, Sparkles, ArrowRight, Loader2, AlertCircle } from "lucide-react";
 import Link from "next/link";
+import type { MarketHeatmapItem } from "@/types";
 
 interface Insight {
   title: string;
@@ -11,7 +12,7 @@ interface Insight {
   tags: string[];
 }
 
-function generateInsights(sectors: any[]): Insight[] {
+function generateInsights(sectors: MarketHeatmapItem[]): Insight[] {
   if (!sectors || sectors.length === 0) return [];
   const sorted = [...sectors].sort((a, b) => b.changePercent - a.changePercent);
   const top3 = sorted.slice(0, 3);
