@@ -1,39 +1,52 @@
 /**
- * API Key storage utility.
+ * API Key management — client facade over the server-side key store.
  *
- * SECURITY MODEL (P0-2):
- * - Server-side: API Keys stored as environment variables (process.env.*_API_KEY)
- * - Client-side: localStorage retains keys for convenience on personal devices,
- *   but settings page now displays a prominent security warning.
- * - The /api/ai/analyze route prioritizes server env vars over client-sent keys.
+ * SECURITY MODEL (D1 fix):
+ * - Keys live ONLY in an AES-256-GCM encrypted HttpOnly cookie, written by
+ *   PUT /api/settings/keys. Client JavaScript can never read key material.
+ * - This module exposes configuration STATUS (configured + masked tail) and
+ *   proxies save/clear/test operations to the server.
+ * - Server API routes resolve keys in order: env vars → cookie → request body.
  */
-
-const STORAGE_KEY = "quantumstock:api-keys";
 
 export type APIKeyRecord = Record<string, string>;
 
-export function saveAPIKeys(keys: APIKeyRecord): void {
-  try {
-    const json = JSON.stringify(keys);
-    const encoded = btoa(json);
-    localStorage.setItem(STORAGE_KEY, encoded);
-  } catch {}
+export interface ProviderKeyStatus {
+  configured: boolean;
+  masked: string | null;
 }
 
-export function loadAPIKeys(): APIKeyRecord {
+export type KeyStatusMap = Record<string, ProviderKeyStatus>;
+
+/** Fetch per-provider configuration status (never the key itself). */
+export async function fetchKeyStatus(): Promise<KeyStatusMap> {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return {};
-    const json = atob(raw);
-    return JSON.parse(json);
+    const res = await fetch("/api/settings/keys", { cache: "no-store" });
+    const j = await res.json();
+    if (j.success && j.data?.providers) return j.data.providers as KeyStatusMap;
+  } catch {}
+  return {};
+}
+
+/** Save keys server-side. Pass "" for a provider to remove that key. */
+export async function saveAPIKeys(keys: APIKeyRecord): Promise<boolean> {
+  try {
+    const res = await fetch("/api/settings/keys", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ keys }),
+    });
+    const j = await res.json();
+    return Boolean(j.success);
   } catch {
-    return {};
+    return false;
   }
 }
 
-export function clearAPIKeys(): void {
+/** Remove all stored keys. */
+export async function clearAPIKeys(): Promise<void> {
   try {
-    localStorage.removeItem(STORAGE_KEY);
+    await fetch("/api/settings/keys", { method: "DELETE" });
   } catch {}
 }
 
@@ -53,12 +66,16 @@ export function validateKeyFormat(provider: string, key: string): boolean {
   return pattern.test(key);
 }
 
-export async function testAPIKey(provider: string, key: string): Promise<{ valid: boolean; error?: string }> {
+/**
+ * Test an API key. When `key` is omitted, the server tests the key already
+ * stored in the encrypted cookie for that provider.
+ */
+export async function testAPIKey(provider: string, key?: string): Promise<{ valid: boolean; error?: string }> {
   try {
     const res = await fetch("/api/ai/test-key", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ provider, key }),
+      body: JSON.stringify(key ? { provider, key } : { provider }),
     });
     const j = await res.json();
     return j;

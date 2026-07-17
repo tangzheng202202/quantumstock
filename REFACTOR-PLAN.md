@@ -23,8 +23,8 @@
 
 | 编号 | 类别 | 问题 | 位置 | 严重度 |
 |---|---|---|---|---|
-| D1 | 安全 | API Key 用 `btoa` Base64 存 localStorage（可逆，等同明文） | `lib/storage/api-keys.ts` | 🔴 高 |
-| D2 | 安全 | CORS 配置 `*`，缺少 CSP / 安全响应头 | `next.config.ts` | 🔴 高 |
+| ~~D1~~ | 安全 | ~~API Key 用 `btoa` Base64 存 localStorage~~ ✅ **已修复（Phase 6）**：AES-256-GCM 加密 + HttpOnly Cookie 服务端化存储，JS 不可读 | `lib/server/api-keys.ts` | ~~🔴~~ ✅ |
+| ~~D2~~ | 安全 | ~~CORS 配置 `*`，缺少 CSP / 安全响应头~~ ✅ **已修复（Phase 6）**：CSP/X-Frame-Options/HSTS 等全套响应头 | `next.config.ts` | ~~🔴~~ ✅ |
 | D3 | 架构 | 已建的 `CacheService`（TTL+SWR）**未被任何数据模块使用**，各模块自造碎片缓存 | `lib/cache/index.ts` vs `lib/data/*` | 🟡 中 |
 | D4 | 架构 | `eastmoney.ts` 211 行单文件聚合 6 大职责（板块/轮动/K线/财务/成分股/全A） | `lib/data/eastmoney.ts` | 🟡 中 |
 | D5 | 类型 | 全站 **15+ 处 `any`**，集中在 ticker/portfolio 路由与数据结构 | `api/market/ticker`, `api/portfolio/sync` 等 | 🟡 中 |

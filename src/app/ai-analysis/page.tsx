@@ -16,7 +16,6 @@ import {
   RotateCcw,
 } from "lucide-react";
 import { cn, sanitizeHtml } from "@/lib/utils";
-import { loadAPIKeys } from "@/lib/storage/api-keys";
 import { saveReport, deleteReport } from "@/lib/storage/report-history";
 import { useReportHistory } from "@/lib/hooks/useReportHistory";
 import type { StockInfo } from "@/types";
@@ -121,34 +120,15 @@ function AIAnalysisContent() {
     setActiveTab("result");
 
     try {
-      // Load saved API keys from localStorage for providers the user has configured
-      const savedKeys = loadAPIKeys();
-
-      // Build the apiKeys payload: map from provider to key value
-      const apiKeysPayload: Record<string, string> = {};
-      let hasKeys = false;
-      for (const modelId of selectedModels) {
-        const model = AVAILABLE_MODELS.find((m) => m.id === modelId);
-        if (!model) continue;
-        const provider = model.provider;
-        const key = savedKeys[provider];
-        if (key && key.length > 10) {
-          apiKeysPayload[provider] = key;
-          hasKeys = true;
-        }
-      }
-
-      const body: any = {
+      // API keys are resolved server-side from the encrypted HttpOnly cookie
+      // (configured in Settings) or env vars — no key material in the browser.
+      const body = {
         stock: selectedStock,
         models: selectedModels,
         skills: selectedSkills,
-        focusAreas: [],
+        focusAreas: [] as string[],
         customPrompt: "",
       };
-
-      if (hasKeys) {
-        body.apiKeys = apiKeysPayload;
-      }
 
       const res = await fetch("/api/ai/analyze", {
         method: "POST",

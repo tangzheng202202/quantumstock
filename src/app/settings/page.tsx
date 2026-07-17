@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { AVAILABLE_MODELS } from "@/lib/ai/client";
 import { cn } from "@/lib/utils";
-import { saveAPIKeys, loadAPIKeys, testAPIKey } from "@/lib/storage/api-keys";
+import { saveAPIKeys, fetchKeyStatus, testAPIKey, type KeyStatusMap } from "@/lib/storage/api-keys";
 import {
   Brain,
   Bell,
@@ -44,43 +44,61 @@ export default function SettingsPage() {
   const [keyStatus, setKeyStatus] = useState<Record<string, "idle" | "valid" | "invalid">>({});
   const [keyErrors, setKeyErrors] = useState<Record<string, string>>({});
 
-  // Load saved keys on mount
+  // Server-side key status (configured + masked tail; key material is never
+  // readable from the client — keys live in an encrypted HttpOnly cookie).
+  const [serverKeys, setServerKeys] = useState<KeyStatusMap>({});
+
+  // Load key configuration status on mount
   useEffect(() => {
-    const saved = loadAPIKeys();
-    if (Object.keys(saved).length > 0) {
-      setApiKeys(prev => ({
-        claude: saved.claude ?? prev.claude,
-        openai: saved.openai ?? prev.openai,
-        deepseek: saved.deepseek ?? prev.deepseek,
-        minimax: saved.minimax ?? prev.minimax,
-      }));
-    }
+    let cancelled = false;
+    fetchKeyStatus().then((status) => {
+      if (!cancelled) setServerKeys(status);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    // Only non-empty inputs are submitted; an empty input means "keep as-is".
     const keys: Record<string, string> = {};
     if (apiKeys.claude && apiKeys.claude.length > 10) keys.claude = apiKeys.claude;
     if (apiKeys.openai && apiKeys.openai.length > 10) keys.openai = apiKeys.openai;
     if (apiKeys.deepseek && apiKeys.deepseek.length > 10) keys.deepseek = apiKeys.deepseek;
     if (apiKeys.minimax && apiKeys.minimax.length > 10) keys.minimax = apiKeys.minimax;
-    saveAPIKeys(keys);
+    if (Object.keys(keys).length === 0) {
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+      return;
+    }
+    const ok = await saveAPIKeys(keys);
+    if (ok) {
+      // Clear submitted inputs so the key text doesn't linger in the DOM.
+      setApiKeys({ claude: "", openai: "", deepseek: "", minimax: "" });
+      setServerKeys(await fetchKeyStatus());
+    }
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
 
   const handleTestKey = async (provider: string) => {
-    const key = apiKeys[provider as keyof typeof apiKeys];
-    if (!key || key.length <= 10) return;
+    const inputKey = apiKeys[provider as keyof typeof apiKeys];
+    const hasNewKey = inputKey && inputKey.length > 10;
+    if (!hasNewKey && !serverKeys[provider]?.configured) return;
 
     setTesting(prev => ({ ...prev, [provider]: true }));
     setKeyStatus(prev => ({ ...prev, [provider]: "idle" }));
     setKeyErrors(prev => ({ ...prev, [provider]: "" }));
 
-    // Save first to ensure latest key is in localStorage
-    handleSave();
+    // If a new key was typed, persist it first, then test the stored key.
+    if (hasNewKey) {
+      await saveAPIKeys({ [provider]: inputKey });
+      setApiKeys(prev => ({ ...prev, [provider]: "" }));
+      setServerKeys(await fetchKeyStatus());
+    }
 
     try {
-      const result = await testAPIKey(provider, key);
+      const result = await testAPIKey(provider);
       if (result.valid) {
         setKeyStatus(prev => ({ ...prev, [provider]: "valid" }));
       } else {
@@ -137,14 +155,14 @@ export default function SettingsPage() {
                     配置各AI模型的API密钥。密钥以Base64编码存储在浏览器本地。
                   </CardDescription>
                   <div className="mt-2 rounded-lg border border-warning/30 bg-warning/10 p-3">
-                    <p className="text-xs text-warning font-medium">⚠️ 安全提示</p>
+                    <p className="text-xs text-success font-medium">🔒 密钥安全存储</p>
                     <p className="text-[10px] text-muted-foreground mt-1">
-                      API Key 存储在浏览器 localStorage 中（Base64 编码，非加密）。
-                      <strong>请勿在公共电脑上配置 Key</strong>。
-                      如需更高安全性，请在服务端 <code className="bg-muted px-1 rounded">.env.local</code> 中配置环境变量
+                      API Key 经 <strong>AES-256-GCM 加密</strong>后存储于 HttpOnly Cookie，浏览器脚本无法读取，
+                      仅在调用分析接口时由服务端解密使用。团队部署推荐在服务端
+                      <code className="bg-muted px-1 rounded">.env.local</code> 中配置环境变量
                       <code className="bg-muted px-1 rounded">ANTHROPIC_API_KEY</code> /
                       <code className="bg-muted px-1 rounded">OPENAI_API_KEY</code> /
-                      <code className="bg-muted px-1 rounded">DEEPSEEK_API_KEY</code>。
+                      <code className="bg-muted px-1 rounded">DEEPSEEK_API_KEY</code>（优先级最高）。
                     </p>
                   </div>
                 </CardHeader>
@@ -171,7 +189,11 @@ export default function SettingsPage() {
                               setKeyStatus(prev => ({ ...prev, [provider]: "idle" }));
                             }}
                             className="w-64 rounded-lg border border-input bg-background px-3 py-1.5 text-xs font-mono pr-8"
-                            placeholder={`输入${label} API密钥`}
+                            placeholder={
+                              serverKeys[provider]?.configured
+                                ? `已配置 ${serverKeys[provider].masked}（输入新 Key 替换）`
+                                : `输入${label} API密钥`
+                            }
                           />
                           <button
                             onClick={() =>
@@ -193,14 +215,16 @@ export default function SettingsPage() {
                             <span className="flex items-center gap-1 text-[10px] text-destructive"><WifiOff className="h-2.5 w-2.5" /> 无效</span>
                           ) : apiKeys[provider as keyof typeof apiKeys]?.length > 10 ? (
                             <span className="flex items-center gap-1 text-[10px] text-muted-foreground"><CheckCircle2 className="h-2.5 w-2.5" /> 已填写</span>
+                          ) : serverKeys[provider]?.configured ? (
+                            <span className="flex items-center gap-1 text-[10px] text-success"><CheckCircle2 className="h-2.5 w-2.5" /> 已配置</span>
                           ) : (
                             <span className="flex items-center gap-1 text-[10px] text-muted-foreground/40"><XCircle className="h-2.5 w-2.5" /> 未配置</span>
                           )}
                         </div>
                       </div>
                       </div>
-                      {/* Test button and status */}
-                      {apiKeys[provider as keyof typeof apiKeys]?.length > 10 && (
+                      {/* Test button and status — available for newly typed keys or already-configured ones */}
+                      {(apiKeys[provider as keyof typeof apiKeys]?.length > 10 || serverKeys[provider]?.configured) && (
                         <div className="ml-[calc(100%-20rem)] mt-1 flex items-center gap-2">
                           <button
                             onClick={() => handleTestKey(provider)}
@@ -238,7 +262,7 @@ export default function SettingsPage() {
                   {saved ? "已保存" : "保存密钥"}
                 </button>
                 <p className="text-[10px] text-muted-foreground">
-                  密钥将经过编码后存储在浏览器本地，不会上传到服务器
+                  密钥经加密后仅存于 HttpOnly Cookie，页面脚本无法读取；留空的输入框表示保持现有配置不变
                 </p>
               </div>
 

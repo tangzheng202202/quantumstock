@@ -4,7 +4,6 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn, sanitizeHtml } from "@/lib/utils";
-import { loadAPIKeys } from "@/lib/storage/api-keys";
 import {
   ChevronRight,
   Wrench,
@@ -134,17 +133,14 @@ export default function IndustryChainPage() {
     setAiInsight(null);
 
     try {
-      const savedKeys = loadAPIKeys();
-      const body: any = {
-        stock: { symbol: "000001", name: selectedChain.name, market: "SSE", currency: "CNY" },
+      // API keys are resolved server-side from the encrypted HttpOnly cookie
+      // (configured in Settings) or env vars — no key material in the browser.
+      const body = {
+        stock: { symbol: "000001", name: selectedChain.name, market: "SSE" as const, currency: "CNY" },
         models: ["deepseek-v4-flash"],
         skills: ["shovel-seller"],
         customPrompt: `请分析「${selectedChain.name}」的整体投资价值，重点关注产业链上下游关系和卖铲子公司。当前产业链包含：${selectedChain.companies.map(c => `${c.name}(${c.symbol})-${c.role}`).join("、")}`,
       };
-
-      if (savedKeys.deepseek && savedKeys.deepseek.length > 10) {
-        body.apiKeys = { deepseek: savedKeys.deepseek };
-      }
 
       const res = await fetch("/api/ai/analyze", {
         method: "POST",

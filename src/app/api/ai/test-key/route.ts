@@ -1,14 +1,22 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { readKeysFromRequest, type StoredKeys } from "@/lib/server/api-keys";
 
 export const dynamic = "force-dynamic";
 
 /**
  * POST /api/ai/test-key
  * Test an API key by making a lightweight call to the provider's models endpoint.
+ * Body: { provider, key? } — when key is omitted, the key stored in the
+ * encrypted HttpOnly cookie is tested instead.
  */
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
-    const { provider, key } = await request.json();
+    const { provider, key: bodyKey } = await request.json();
+
+    const key: string | undefined =
+      typeof bodyKey === "string" && bodyKey.length >= 10
+        ? bodyKey
+        : readKeysFromRequest(request)[provider as keyof StoredKeys];
 
     if (!provider || !key || key.length < 10) {
       return NextResponse.json(

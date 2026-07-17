@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { runMultiModelAnalysis, AVAILABLE_MODELS } from "@/lib/ai/client";
 import { fetchAStockFinancials, fetchEMKLine } from "@/lib/data/eastmoney";
+import { readKeysFromRequest } from "@/lib/server/api-keys";
 import type { AnalysisRequest, AIProvider } from "@/types";
 
 /** Strip API key fragments from error messages before logging or returning. */
@@ -55,7 +56,15 @@ export async function POST(request: NextRequest) {
       local: "",
     };
 
-    // Merge client-provided keys (override env) — with format validation
+    // Merge keys from the encrypted HttpOnly cookie (user-configured via the
+    // settings page; overrides env so personal keys work on shared deployments)
+    const cookieKeys = readKeysFromRequest(request);
+    if (cookieKeys.claude) apiKeys.claude = cookieKeys.claude;
+    if (cookieKeys.openai) apiKeys.openai = cookieKeys.openai;
+    if (cookieKeys.deepseek) apiKeys.deepseek = cookieKeys.deepseek;
+    if (cookieKeys.minimax) apiKeys.minimax = cookieKeys.minimax;
+
+    // Merge client-provided keys (legacy/external-script path) — with format validation
     if (body.apiKeys) {
       const validate = (provider: string, key: string) => {
         if (!key || key.length < 10) return false;
@@ -89,7 +98,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         success: false,
         error: configured.length === 0
-          ? "未配置任何 AI API Key。请在 .env.local 中设置 DEEPSEEK_API_KEY / ANTHROPIC_API_KEY / OPENAI_API_KEY / MINIMAX_API_KEY 后重启 dev server。"
+          ? "未配置任何 AI API Key。请前往「设置 → AI模型」页配置（加密存储），或在 .env.local 中设置 DEEPSEEK_API_KEY / ANTHROPIC_API_KEY / OPENAI_API_KEY / MINIMAX_API_KEY。"
           : `所选模型暂未配置 API Key。当前可用模型来源: ${configured.join(", ")}`,
         configured,
       }, { status: 503 });
