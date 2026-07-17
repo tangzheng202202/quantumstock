@@ -46,7 +46,7 @@ export async function fetchAStockFinancials(symbol: string): Promise<StockFinanc
     const d = json?.data;
     if (!d) return null;
 
-    const num = (v: any): number | null => (v == null || v === "-" || v === "" ? null : Number(v));
+    const num = (v: unknown): number | null => (v == null || v === "-" || v === "" ? null : Number(v));
 
     return {
       symbol,

@@ -4,6 +4,7 @@
 import { cache } from "@/lib/cache";
 import type { MarketHeatmapItem, SectorRotation } from "@/types";
 import { EM_PUSH_URL, REQ_HEADERS } from "./shared";
+import type { EmSectorRow, EmConstituentRow } from "./shared";
 
 /** Fetch industry sector heat map. Cached 30s. */
 export async function fetchIndustrySectors(): Promise<MarketHeatmapItem[]> {
@@ -14,12 +15,12 @@ export async function fetchIndustrySectors(): Promise<MarketHeatmapItem[]> {
     const json = await res.json();
     if (!json?.data?.diff) return [];
 
-    return json.data.diff.map((row: any) => ({
-      sector: row.f14 as string,
-      sectorCode: row.f12 as string,
+    return (json.data.diff as EmSectorRow[]).map((row) => ({
+      sector: row.f14,
+      sectorCode: row.f12,
       changePercent: Number(row.f3) || 0,
       volume: Math.abs(Number(row.f62) || 0) / 1e8,
-      leadingStock: (row.f128 as string) ?? undefined,
+      leadingStock: row.f128 ?? undefined,
     })) as MarketHeatmapItem[];
   });
 }
@@ -65,9 +66,9 @@ export async function fetchSectorConstituents(sectorCode: string): Promise<Secto
     const json = await res.json();
     if (!json?.data?.diff) return [];
 
-    return json.data.diff.map((row: any) => ({
-      symbol: row.f12 as string,
-      name: row.f14 as string,
+    return (json.data.diff as EmConstituentRow[]).map((row) => ({
+      symbol: row.f12,
+      name: row.f14,
       price: Number(row.f2) || 0,
       changePercent: Number(row.f3) || 0,
       change: Number(row.f4) || 0,

@@ -19,6 +19,47 @@ export interface EmSecid {
 }
 
 /**
+ * EastMoney field values arrive as numbers, numeric strings, "-" (empty),
+ * or null depending on the endpoint — model them loosely and coerce at the edge.
+ */
+export type EmFieldValue = string | number | null | undefined;
+
+/** Raw row from the sector heat-map clist endpoint (fields f12,f14,f3,f62,f128). */
+export interface EmSectorRow {
+  f12: string;
+  f14: string;
+  f3: EmFieldValue;
+  f62: EmFieldValue;
+  f128?: string;
+}
+
+/** Raw row from the sector-constituents clist endpoint (fields f12,f14,f2,f3,f4,f9,f20). */
+export interface EmConstituentRow {
+  f12: string;
+  f14: string;
+  f2: EmFieldValue;
+  f3: EmFieldValue;
+  f4: EmFieldValue;
+  f9?: EmFieldValue;
+  f20?: number | null;
+}
+
+/** Raw row from the full-A-share screener clist endpoint. */
+export interface EmScreenerRow {
+  f12: string;
+  f14: string;
+  f2: EmFieldValue;
+  f3: EmFieldValue;
+  f4: EmFieldValue;
+  f5: EmFieldValue;
+  f6: EmFieldValue;
+  f8?: EmFieldValue;
+  f9?: EmFieldValue;
+  f20?: number | null;
+  f37?: number | null;
+}
+
+/**
  * Resolve a raw symbol to an EastMoney secid.
  * A-share 6-digit → `{1|0}.{code}`; HK 5-digit → `116.{code}`; US alpha → `105.{ticker}`.
  */

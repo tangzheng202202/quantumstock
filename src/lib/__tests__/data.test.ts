@@ -36,10 +36,12 @@ describe("resolveEmSecid", () => {
 describe("fetchSinaQuotes", () => {
   function mockSinaResponse(text: string) {
     const buf = new TextEncoder().encode(text).buffer;
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+    const mock = vi.fn().mockResolvedValue({
       ok: true,
       arrayBuffer: async () => buf,
-    }));
+    });
+    vi.stubGlobal("fetch", mock);
+    return mock;
   }
 
   it("parses A-share quote lines into TickerData", async () => {
@@ -58,12 +60,12 @@ describe("fetchSinaQuotes", () => {
   });
 
   it("caches quotes within TTL (single upstream call)", async () => {
-    mockSinaResponse(
-      'var hq_str_sz000858="五粮液,150.00,149.00,151.00,152.00,148.50,0,0,999,123456";\n'
+    const mock = mockSinaResponse(
+      'var hq_str_sz000858="Wuliangye,150.00,149.00,151.00,152.00,148.50,0,0,999,123456";\n'
     );
     await fetchSinaQuotes(["000858"]);
     await fetchSinaQuotes(["000858"]);
-    expect((fetch as any)).toHaveBeenCalledTimes(1);
+    expect(mock).toHaveBeenCalledTimes(1);
   });
 
   it("returns empty array when no resolvable symbols", async () => {

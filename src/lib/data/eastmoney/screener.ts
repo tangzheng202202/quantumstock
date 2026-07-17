@@ -3,6 +3,7 @@
  */
 import { cache } from "@/lib/cache";
 import { EM_PUSH_URL, REQ_HEADERS } from "./shared";
+import type { EmScreenerRow } from "./shared";
 
 export interface ASharesScreenerItem {
   symbol: string;
@@ -62,9 +63,9 @@ export async function fetchAllAShares(filters?: ScreenerFilters): Promise<AShare
     const results = await Promise.allSettled(pagePromises);
     for (const r of results) {
       if (r.status !== "fulfilled" || !r.value?.data?.diff) continue;
-      const items = r.value.data.diff.map((row: any) => ({
-        symbol: row.f12 as string,
-        name: row.f14 as string,
+      const items = (r.value.data.diff as EmScreenerRow[]).map((row) => ({
+        symbol: row.f12,
+        name: row.f14,
         price: Number(row.f2) || 0,
         changePercent: Number(row.f3) || 0,
         change: Number(row.f4) || 0,

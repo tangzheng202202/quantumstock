@@ -361,7 +361,16 @@ export async function fetchBacktestData(symbol: string, range = "2y"): Promise<K
   if (!res.ok) throw new Error(`K线获取失败: HTTP ${res.status}`);
   const j = await res.json();
   if (!j.success) throw new Error(j.error ?? "未知错误");
-  return (j.data as any[]).map(b => ({
+  // Raw bar shape returned by /api/market/ohlcv (timestamp in ms).
+  interface OhlcvApiBar {
+    timestamp: number;
+    open: number;
+    high: number;
+    low: number;
+    close: number;
+    volume: number;
+  }
+  return (j.data as OhlcvApiBar[]).map(b => ({
     date: new Date(b.timestamp).toISOString().slice(0, 10),
     open: b.open, high: b.high, low: b.low, close: b.close, volume: b.volume,
   }));

@@ -32,7 +32,7 @@ describe("GET /api/market/search", () => {
   });
 
   it("returns search results with trace id header", async () => {
-    (smartSearch as any).mockResolvedValue([{ symbol: "600519", name: "贵州茅台" }]);
+    vi.mocked(smartSearch).mockResolvedValue([{ symbol: "600519", name: "贵州茅台", market: "SSE", currency: "CNY" }]);
     const res = await searchGET(req("/api/market/search?q=600519"));
     expect(res.status).toBe(200);
     expect(res.headers.get("x-trace-id")).toBeTruthy();
@@ -43,7 +43,7 @@ describe("GET /api/market/search", () => {
   });
 
   it("maps data-layer failure to 500", async () => {
-    (smartSearch as any).mockRejectedValue(new Error("sina down"));
+    vi.mocked(smartSearch).mockRejectedValue(new Error("sina down"));
     const res = await searchGET(req("/api/market/search?q=x"));
     expect(res.status).toBe(500);
     const json = await res.json();
@@ -60,7 +60,7 @@ describe("GET /api/market/ohlcv", () => {
   });
 
   it("serves A-share kline from Sina", async () => {
-    (fetchSinaKLine as any).mockResolvedValue([
+    vi.mocked(fetchSinaKLine).mockResolvedValue([
       { timestamp: 1, open: 1, high: 2, low: 1, close: 2, volume: 100 },
     ]);
     const res = await ohlcvGET(req("/api/market/ohlcv?symbol=600519&limit=10"));
@@ -73,8 +73,8 @@ describe("GET /api/market/ohlcv", () => {
 
   it("returns 502 when both Sina and EM fail for A-share", async () => {
     const { fetchEMKLine } = await import("@/lib/data/eastmoney");
-    (fetchSinaKLine as any).mockRejectedValue(new Error("sina fail"));
-    (fetchEMKLine as any).mockRejectedValue(new Error("em fail"));
+    vi.mocked(fetchSinaKLine).mockRejectedValue(new Error("sina fail"));
+    vi.mocked(fetchEMKLine).mockRejectedValue(new Error("em fail"));
     const res = await ohlcvGET(req("/api/market/ohlcv?symbol=600519"));
     expect(res.status).toBe(502);
     const json = await res.json();

@@ -4,7 +4,7 @@
  * No Python engine dependency. Works directly from China.
  */
 import { cache } from "@/lib/cache";
-import type { MarketIndex, StockInfo, TickerData } from "@/types";
+import type { Market, MarketIndex, StockInfo, TickerData } from "@/types";
 
 const SINA_QUOTE_URL = "http://hq.sinajs.cn/list=";
 const REQ_HEADERS = {
@@ -58,7 +58,7 @@ export { resolveSinaCode as _resolveSinaCodeForExternal };
 /**
  * Determine market from symbol pattern
  */
-function detectMarket(symbol: string): string {
+function detectMarket(symbol: string): Market {
   if (/^\d{6}$/.test(symbol)) {
     if (symbol.startsWith("6")) return "SSE";
     return "SZSE";
@@ -175,7 +175,7 @@ export async function fetchSinaQuotes(symbols: string[]): Promise<TickerData[]> 
 
       results.push({
         stock: {
-          symbol: intSym, name: parsed.name, market: market as any,
+          symbol: intSym, name: parsed.name, market,
           currency: market === "HKEX" ? "HKD" : market === "NASDAQ" || market === "NYSE" ? "USD" : "CNY",
         },
         quote: {
@@ -194,10 +194,10 @@ export async function fetchSinaIndices(): Promise<MarketIndex[]> {
   return cache.get("sina:indices", 30, async () => {
     const raw = await fetchSinaRaw(["sh000001", "sz399001", "sz399006"]);
     const results: MarketIndex[] = [];
-    const map: Record<string, { id: string; name: string }> = {
-      sh000001: { id: "SSE", name: "上证指数" },
-      sz399001: { id: "SZSE", name: "深证成指" },
-      sz399006: { id: "GEM", name: "创业板指" },
+    const map: Record<string, { id: string; name: string; market: Market }> = {
+      sh000001: { id: "SSE", name: "上证指数", market: "SSE" },
+      sz399001: { id: "SZSE", name: "深证成指", market: "SZSE" },
+      sz399006: { id: "GEM", name: "创业板指", market: "SZSE" },
     };
 
     for (const line of raw.split("\n")) {
@@ -208,7 +208,7 @@ export async function fetchSinaIndices(): Promise<MarketIndex[]> {
       const f = m[2].split(",");
       const price = parseFloat(f[3]) || 0, prevClose = parseFloat(f[2]) || 0;
       results.push({
-        id: cfg.id, name: cfg.name, market: cfg.id as any,
+        id: cfg.id, name: cfg.name, market: cfg.market,
         value: +price.toFixed(2), change: +(price - prevClose).toFixed(2),
         changePercent: prevClose ? +((price - prevClose) / prevClose * 100).toFixed(2) : 0,
       });
@@ -286,15 +286,15 @@ export async function smartSearch(query: string): Promise<StockInfo[]> {
 
   // Direct 6-digit code? Return it immediately, try fetching name from Sina
   if (/^\d{6}$/.test(q)) {
-    const market = q.startsWith("6") || q.startsWith("688") ? "SSE" : "SZSE";
+    const market: Market = q.startsWith("6") || q.startsWith("688") ? "SSE" : "SZSE";
     // Try to get the real name from Sina
     try {
       const quotes = await fetchSinaQuotes([q]);
       if (quotes.length > 0) {
-        return [{ symbol: q, name: quotes[0].stock.name, market: market as any, currency: "CNY" }];
+        return [{ symbol: q, name: quotes[0].stock.name, market, currency: "CNY" }];
       }
     } catch {}
-    return [{ symbol: q, name: q, market: market as any, currency: "CNY" }];
+    return [{ symbol: q, name: q, market, currency: "CNY" }];
   }
 
   // Search local database
