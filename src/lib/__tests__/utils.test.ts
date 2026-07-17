@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { formatCurrency, formatPercent, formatLargeNumber, cnColor } from "../utils";
+import { formatCurrency, formatPercent, formatLargeNumber, cnColor, cnBgColor, sanitizeHtml } from "../utils";
 
 describe("formatCurrency", () => {
   it("should format CNY correctly", () => {
@@ -56,6 +56,15 @@ describe("formatLargeNumber", () => {
     const result = formatLargeNumber(1.5e12);
     expect(result).toContain("T");
   });
+
+  it("should format in M for million-range amounts", () => {
+    expect(formatLargeNumber(2.5e6)).toContain("M");
+  });
+
+  it("should format sub-thousand values with two decimals", () => {
+    expect(formatLargeNumber(999)).toBe("999.00");
+    expect(formatLargeNumber(0.5)).toBe("0.50");
+  });
 });
 
 describe("cnColor", () => {
@@ -69,5 +78,42 @@ describe("cnColor", () => {
 
   it("should return muted for zero", () => {
     expect(cnColor(0)).toBe("text-muted-foreground");
+  });
+});
+
+describe("cnBgColor", () => {
+  it("returns bull bg for positive", () => {
+    expect(cnBgColor(1)).toBe("bg-bull/10 text-bull");
+  });
+
+  it("returns bear bg for negative", () => {
+    expect(cnBgColor(-1)).toBe("bg-bear/10 text-bear");
+  });
+
+  it("returns muted bg for zero", () => {
+    expect(cnBgColor(0)).toBe("bg-muted text-muted-foreground");
+  });
+});
+
+describe("sanitizeHtml", () => {
+  it("strips script tags and their content", () => {
+    expect(sanitizeHtml('<p>hi</p><script>alert(1)</script>')).toBe("<p>hi</p>");
+  });
+
+  it("strips inline event handlers (quoted and unquoted)", () => {
+    const quoted = sanitizeHtml('<div onclick="x()">a</div>');
+    expect(quoted).not.toContain("onclick");
+    expect(quoted).not.toContain("x()");
+    const unquoted = sanitizeHtml("<img src=a onerror=alert(1)>");
+    expect(unquoted).not.toContain("onerror");
+    expect(unquoted).not.toContain("alert");
+  });
+
+  it("strips iframe tags", () => {
+    expect(sanitizeHtml('<iframe src="http://evil"></iframe>safe')).toBe("safe");
+  });
+
+  it("leaves benign markup intact", () => {
+    expect(sanitizeHtml("<p>Hello <strong>world</strong></p>")).toBe("<p>Hello <strong>world</strong></p>");
   });
 });
