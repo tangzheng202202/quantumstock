@@ -11,7 +11,6 @@ interface CacheEntry<T> {
 
 class CacheService {
   private store = new Map<string, CacheEntry<any>>();
-
   /**
    * Get cached data or fetch fresh.
    * @param key Cache key
@@ -64,3 +63,4 @@ class CacheService {
 }
 
 export const cache = new CacheService();
+export { CacheService };

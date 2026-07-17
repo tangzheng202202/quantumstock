@@ -3,6 +3,7 @@
  * Supports ALL A-share stocks dynamically (5000+ stocks).
  * No Python engine dependency. Works directly from China.
  */
+import { cache } from "@/lib/cache";
 import type { MarketIndex, StockInfo, TickerData } from "@/types";
 
 const SINA_QUOTE_URL = "http://hq.sinajs.cn/list=";
@@ -95,13 +96,7 @@ export function searchStockDb(query: string, db: StockInfo[]): StockInfo[] {
 }
 
 // ---- Sina fetching ----
-
-const _cache = new Map<string, { data: unknown; ts: number }>();
-function cached<T>(key: string, ttl: number, fn: () => Promise<T>): Promise<T> {
-  const hit = _cache.get(key);
-  if (hit && Date.now() - hit.ts < ttl * 1000) return Promise.resolve(hit.data as T);
-  return fn().then(data => { _cache.set(key, { data, ts: Date.now() }); return data; });
-}
+// Uses the unified CacheService (TTL + stale-while-revalidate).
 
 async function fetchSinaRaw(codes: string[]): Promise<string> {
   const url = SINA_QUOTE_URL + codes.join(",");
@@ -161,8 +156,8 @@ export async function fetchSinaQuotes(symbols: string[]): Promise<TickerData[]> 
   const sinaCodes = symbols.map(s => resolveSinaCode(s)).filter(Boolean) as string[];
   if (sinaCodes.length === 0) return [];
 
-  const cacheKey = `q:${sinaCodes.sort().join(",")}`;
-  return cached(cacheKey, 3, async () => {
+  const cacheKey = `sina:q:${sinaCodes.sort().join(",")}`;
+  return cache.get(cacheKey, 3, async () => {
     const raw = await fetchSinaRaw(sinaCodes);
     const results: TickerData[] = [];
 
@@ -196,7 +191,7 @@ export async function fetchSinaQuotes(symbols: string[]): Promise<TickerData[]> 
 }
 
 export async function fetchSinaIndices(): Promise<MarketIndex[]> {
-  return cached("indices", 30, async () => {
+  return cache.get("sina:indices", 30, async () => {
     const raw = await fetchSinaRaw(["sh000001", "sz399001", "sz399006"]);
     const results: MarketIndex[] = [];
     const map: Record<string, { id: string; name: string }> = {
@@ -347,8 +342,8 @@ export async function fetchSinaKLine(symbol: string, days = 120): Promise<KLineB
   const sinaCode = resolveSinaCode(symbol);
   if (!sinaCode) throw new Error(`Not an A-share symbol: ${symbol}`);
 
-  const cacheKey = `kline:${symbol}:${days}`;
-  return cached(cacheKey, 300, async () => {
+  const cacheKey = `sina:kline:${symbol}:${days}`;
+  return cache.get(cacheKey, 300, async () => {
     const url = `${SINA_KLINE_URL}?symbol=${sinaCode}&scale=240&ma=no&datalen=${days}`;
     const res = await fetch(url, { headers: REQ_HEADERS });
     if (!res.ok) throw new Error(`Sina K-line returned ${res.status}`);

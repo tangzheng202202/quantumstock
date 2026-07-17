@@ -1,7 +1,9 @@
 /**
  * Yahoo Finance direct API client
  * Calls Yahoo's v8 chart API from the Next.js server with browser headers to avoid rate limiting.
+ * Uses the unified CacheService for TTL-based caching.
  */
+import { cache } from "@/lib/cache";
 
 const YAHOO_CHART_API = "https://query1.finance.yahoo.com/v8/finance/chart";
 const YAHOO_QUOTE_API = "https://query1.finance.yahoo.com/v7/finance/quote";
@@ -12,21 +14,6 @@ const BROWSER_HEADERS = {
   "Accept": "application/json",
   "Accept-Language": "en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.7",
 };
-
-// Simple in-memory cache
-const cache = new Map<string, { data: unknown; ts: number }>();
-
-function getCached<T>(key: string, ttlSeconds: number): T | null {
-  const entry = cache.get(key);
-  if (entry && Date.now() - entry.ts < ttlSeconds * 1000) {
-    return entry.data as T;
-  }
-  return null;
-}
-
-function setCache(key: string, data: unknown) {
-  cache.set(key, { data, ts: Date.now() });
-}
 
 // ============ Symbol Mapping ============
 
@@ -89,94 +76,106 @@ async function fetchYahooChart(symbol: string, range = "2d", interval = "1d") {
   return result;
 }
 
-export async function fetchYahooQuote(symbol: string) {
+export interface YahooQuote {
+  symbol: string;
+  name: string;
+  price: number;
+  prevClose: number;
+  open: number;
+  high: number;
+  low: number;
+  volume: number;
+  change: number;
+  changePercent: number;
+  marketCap?: number;
+  currency?: string;
+}
+
+export async function fetchYahooQuote(symbol: string): Promise<YahooQuote> {
   const yahooSymbol = SYMBOL_MAP[symbol] ?? symbol;
-  const cacheKey = `q:${yahooSymbol}`;
-  const cached = getCached<{
-    symbol: string; name: string; price: number; prevClose: number;
-    open: number; high: number; low: number; volume: number;
-    change: number; changePercent: number; marketCap?: number; currency?: string;
-  }>(cacheKey, 45);
-  if (cached) return cached;
+  const cacheKey = `yahoo:q:${yahooSymbol}`;
 
-  try {
-    // Use the v7 quote API which is lighter and less rate-limited
-    const url = `${YAHOO_QUOTE_API}?symbols=${encodeURIComponent(yahooSymbol)}`;
-    const res = await fetch(url, { headers: BROWSER_HEADERS });
-    if (!res.ok) throw new Error(`Quote API returned ${res.status}`);
-    const json = await res.json();
-    const q = json?.quoteResponse?.result?.[0];
+  return cache.get(cacheKey, 45, async (): Promise<YahooQuote> => {
+    try {
+      // Use the v7 quote API which is lighter and less rate-limited
+      const url = `${YAHOO_QUOTE_API}?symbols=${encodeURIComponent(yahooSymbol)}`;
+      const res = await fetch(url, { headers: BROWSER_HEADERS });
+      if (!res.ok) throw new Error(`Quote API returned ${res.status}`);
+      const json = await res.json();
+      const q = json?.quoteResponse?.result?.[0];
 
-    if (!q) {
-      // Fallback to chart API
-      const chart = await fetchYahooChart(yahooSymbol, "2d");
-      const meta = chart.meta;
-      const quotes = chart.indicators?.quote?.[0];
-      const timestamps = chart.timestamp ?? [];
+      if (!q) {
+        // Fallback to chart API
+        const chart = await fetchYahooChart(yahooSymbol, "2d");
+        const meta = chart.meta;
+        const quotes = chart.indicators?.quote?.[0];
 
-      const price = meta.regularMarketPrice ?? quotes?.close?.filter(Boolean).pop() ?? meta.previousClose ?? 0;
-      const prevClose = meta.chartPreviousClose ?? meta.previousClose ?? price;
+        const price = meta.regularMarketPrice ?? quotes?.close?.filter(Boolean).pop() ?? meta.previousClose ?? 0;
+        const prevClose = meta.chartPreviousClose ?? meta.previousClose ?? price;
+        const change = price - prevClose;
+        const changePercent = prevClose ? (change / prevClose) * 100 : 0;
+
+        return {
+          symbol, name: meta.symbol ?? symbol, price, prevClose,
+          open: quotes?.open?.filter(Boolean).pop() ?? price,
+          high: meta.regularMarketDayHigh ?? quotes?.high?.filter(Boolean).pop() ?? price,
+          low: meta.regularMarketDayLow ?? quotes?.low?.filter(Boolean).pop() ?? price,
+          volume: meta.regularMarketVolume ?? 0,
+          change, changePercent,
+          marketCap: meta.marketCap, currency: meta.currency,
+        };
+      }
+
+      const price = q.regularMarketPrice ?? q.regularMarketPreviousClose ?? 0;
+      const prevClose = q.regularMarketPreviousClose ?? price;
       const change = price - prevClose;
       const changePercent = prevClose ? (change / prevClose) * 100 : 0;
 
-      const result = {
-        symbol, name: meta.symbol ?? symbol, price, prevClose,
-        open: quotes?.open?.filter(Boolean).pop() ?? price,
-        high: meta.regularMarketDayHigh ?? quotes?.high?.filter(Boolean).pop() ?? price,
-        low: meta.regularMarketDayLow ?? quotes?.low?.filter(Boolean).pop() ?? price,
-        volume: meta.regularMarketVolume ?? 0,
+      return {
+        symbol, name: q.shortName ?? q.symbol ?? symbol, price, prevClose,
+        open: q.regularMarketOpen ?? price,
+        high: q.regularMarketDayHigh ?? price,
+        low: q.regularMarketDayLow ?? price,
+        volume: q.regularMarketVolume ?? 0,
         change, changePercent,
-        marketCap: meta.marketCap, currency: meta.currency,
+        marketCap: q.marketCap, currency: q.currency,
       };
-      setCache(cacheKey, result);
-      return result;
+    } catch (e) {
+      throw new Error(`Failed to fetch ${symbol}: ${e instanceof Error ? e.message : "unknown"}`);
     }
-
-    const price = q.regularMarketPrice ?? q.regularMarketPreviousClose ?? 0;
-    const prevClose = q.regularMarketPreviousClose ?? price;
-    const change = price - prevClose;
-    const changePercent = prevClose ? (change / prevClose) * 100 : 0;
-
-    const result = {
-      symbol, name: q.shortName ?? q.symbol ?? symbol, price, prevClose,
-      open: q.regularMarketOpen ?? price,
-      high: q.regularMarketDayHigh ?? price,
-      low: q.regularMarketDayLow ?? price,
-      volume: q.regularMarketVolume ?? 0,
-      change, changePercent,
-      marketCap: q.marketCap, currency: q.currency,
-    };
-    setCache(cacheKey, result);
-    return result;
-  } catch (e) {
-    throw new Error(`Failed to fetch ${symbol}: ${e instanceof Error ? e.message : "unknown"}`);
-  }
+  });
 }
 
-export async function fetchYahooIndices() {
-  const cacheKey = "indices";
-  const cached = getCached<Array<{ id: string; name: string; market: string; value: number; change: number; changePercent: number }>>(cacheKey, 90);
-  if (cached) return cached;
+export interface YahooIndex {
+  id: string;
+  name: string;
+  market: string;
+  value: number;
+  change: number;
+  changePercent: number;
+}
 
-  const results = [];
-  for (const idx of INDICES_LIST) {
-    try {
-      const quote = await fetchYahooQuote(idx.ticker);
-      results.push({
-        id: idx.id, name: idx.name, market: idx.market,
-        value: quote.price,
-        change: quote.change,
-        changePercent: quote.changePercent,
-      });
-      // Small delay between requests to avoid rate limiting
-      await new Promise(r => setTimeout(r, 300));
-    } catch (e) {
-      console.warn(`Index ${idx.name} failed: ${e}`);
-      results.push({ id: idx.id, name: idx.name, market: idx.market, value: 0, change: 0, changePercent: 0 });
+export async function fetchYahooIndices(): Promise<YahooIndex[]> {
+  return cache.get("yahoo:indices", 90, async () => {
+    const results: YahooIndex[] = [];
+    for (const idx of INDICES_LIST) {
+      try {
+        const quote = await fetchYahooQuote(idx.ticker);
+        results.push({
+          id: idx.id, name: idx.name, market: idx.market,
+          value: quote.price,
+          change: quote.change,
+          changePercent: quote.changePercent,
+        });
+        // Small delay between requests to avoid rate limiting
+        await new Promise(r => setTimeout(r, 300));
+      } catch (e) {
+        console.warn(`Index ${idx.name} failed: ${e}`);
+        results.push({ id: idx.id, name: idx.name, market: idx.market, value: 0, change: 0, changePercent: 0 });
+      }
     }
-  }
-  setCache(cacheKey, results);
-  return results;
+    return results;
+  });
 }
 
 // ============ OHLCV (K-line) Data ============
@@ -202,38 +201,37 @@ export async function fetchYahooOHLCV(
   interval = "1d"
 ): Promise<OHLCVBar[]> {
   const yahooSymbol = SYMBOL_MAP[symbol] ?? symbol;
-  const cacheKey = `ohlcv:${yahooSymbol}:${range}:${interval}`;
-  const cached = getCached<OHLCVBar[]>(cacheKey, 300);
-  if (cached) return cached;
+  const cacheKey = `yahoo:ohlcv:${yahooSymbol}:${range}:${interval}`;
 
-  try {
-    const result = await fetchYahooChart(yahooSymbol, range, interval);
-    const timestamps: number[] = result.timestamp ?? [];
-    const quotes = result.indicators?.quote?.[0];
-    if (!quotes || timestamps.length === 0) throw new Error("No OHLCV data");
+  return cache.get(cacheKey, 300, async () => {
+    try {
+      const result = await fetchYahooChart(yahooSymbol, range, interval);
+      const timestamps: number[] = result.timestamp ?? [];
+      const quotes = result.indicators?.quote?.[0];
+      if (!quotes || timestamps.length === 0) throw new Error("No OHLCV data");
 
-    const bars: OHLCVBar[] = [];
-    for (let i = 0; i < timestamps.length; i++) {
-      const o = quotes.open?.[i];
-      const h = quotes.high?.[i];
-      const l = quotes.low?.[i];
-      const c = quotes.close?.[i];
-      const v = quotes.volume?.[i];
-      if (o == null || c == null) continue;
+      const bars: OHLCVBar[] = [];
+      for (let i = 0; i < timestamps.length; i++) {
+        const o = quotes.open?.[i];
+        const h = quotes.high?.[i];
+        const l = quotes.low?.[i];
+        const c = quotes.close?.[i];
+        const v = quotes.volume?.[i];
+        if (o == null || c == null) continue;
 
-      bars.push({
-        timestamp: timestamps[i] * 1000, // Yahoo returns seconds, we store ms
-        open: Math.round(o * 100) / 100,
-        high: Math.round((h ?? Math.max(o, c)) * 100) / 100,
-        low: Math.round((l ?? Math.min(o, c)) * 100) / 100,
-        close: Math.round(c * 100) / 100,
-        volume: v ?? 0,
-      });
+        bars.push({
+          timestamp: timestamps[i] * 1000, // Yahoo returns seconds, we store ms
+          open: Math.round(o * 100) / 100,
+          high: Math.round((h ?? Math.max(o, c)) * 100) / 100,
+          low: Math.round((l ?? Math.min(o, c)) * 100) / 100,
+          close: Math.round(c * 100) / 100,
+          volume: v ?? 0,
+        });
+      }
+
+      return bars;
+    } catch (e) {
+      throw new Error(`Yahoo OHLCV failed for ${symbol}: ${e instanceof Error ? e.message : "unknown"}`);
     }
-
-    setCache(cacheKey, bars);
-    return bars;
-  } catch (e) {
-    throw new Error(`Yahoo OHLCV failed for ${symbol}: ${e instanceof Error ? e.message : "unknown"}`);
-  }
+  });
 }
