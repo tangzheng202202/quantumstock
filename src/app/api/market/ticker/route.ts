@@ -1,4 +1,5 @@
 import { fetchSinaQuotes, POPULAR_A_STOCKS, _resolveSinaCodeForExternal } from "@/lib/data/sina";
+import { fetchTencentQuotes } from "@/lib/data/tencent";
 import { fetchYahooQuote } from "@/lib/data/yahoo";
 import { withApiHandler } from "@/lib/api/handler";
 import { apiSuccess } from "@/lib/api/response";
@@ -60,6 +61,42 @@ export const GET = withApiHandler("market/ticker", async (req) => {
     } catch (e) {
       console.warn(`[ticker] Sina failed for ${symbol}: ${e}`);
     }
+  }
+
+  // Tencent fallback — reachable where Sina is blocked; covers A/HK/US
+  try {
+    const tickers = await fetchTencentQuotes([symbol]);
+    if (tickers.length > 0 && tickers[0].quote.close > 0) {
+      const ticker = tickers[0];
+      return apiSuccess(
+        {
+          stock: {
+            symbol: ticker.stock.symbol,
+            name: ticker.stock.name,
+            nameCn: ticker.stock.nameCn,
+            market: ticker.stock.market,
+            sector: ticker.stock.sector,
+            currency: ticker.stock.currency,
+            marketCap: undefined,
+          },
+          quote: {
+            timestamp: Date.now(),
+            open: ticker.quote.open,
+            high: ticker.quote.high,
+            low: ticker.quote.low,
+            close: ticker.quote.close,
+            volume: ticker.quote.volume,
+            amount: ticker.quote.amount,
+            change: ticker.quote.change,
+            changePercent: ticker.quote.changePercent,
+          },
+          updatedAt: Date.now(),
+        },
+        { source: "tencent" }
+      );
+    }
+  } catch (e) {
+    console.warn(`[ticker] Tencent failed for ${symbol}: ${e}`);
   }
 
   // Yahoo fallback (will fail if blocked in mainland China, but works on overseas servers)

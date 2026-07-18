@@ -2,6 +2,7 @@
  * EastMoney full A-share market screener.
  */
 import { cache } from "@/lib/cache";
+import { UpstreamError } from "@/lib/api/errors";
 import { EM_PUSH_URL, REQ_HEADERS } from "./shared";
 import type { EmScreenerRow } from "./shared";
 
@@ -61,8 +62,10 @@ export async function fetchAllAShares(filters?: ScreenerFilters): Promise<AShare
     });
 
     const results = await Promise.allSettled(pagePromises);
+    let okPages = 0;
     for (const r of results) {
       if (r.status !== "fulfilled" || !r.value?.data?.diff) continue;
+      okPages++;
       const items = (r.value.data.diff as EmScreenerRow[]).map((row) => ({
         symbol: row.f12,
         name: row.f14,
@@ -77,6 +80,13 @@ export async function fetchAllAShares(filters?: ScreenerFilters): Promise<AShare
         turnoverRate: row.f8 ? Number(row.f8) / 100 : null,
       })) as ASharesScreenerItem[];
       allItems.push(...items);
+    }
+
+    // When every page request failed, the upstream is unreachable — report a
+    // 502 so the client can fall back, instead of returning an empty success
+    // that renders as a broken-looking empty table.
+    if (okPages === 0) {
+      throw new UpstreamError("EastMoney screener upstream unavailable");
     }
 
     // Client-side filtering for PE/ROE

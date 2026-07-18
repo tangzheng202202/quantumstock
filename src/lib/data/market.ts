@@ -1,10 +1,32 @@
 /**
  * Market Data Service
- * Uses Sina Finance (国内专线) for real-time data via Next.js API routes.
+ * Fetches real-time data via Next.js API routes. The server resolves a
+ * fallback chain per endpoint (e.g. Sina → Tencent → mock for quotes), and
+ * reports the actual provider in `meta.source`.
  */
 
 import type { MarketIndex, MarketHeatmapItem, Quote, SectorRotation, StockInfo, TickerData } from "@/types";
 import { POPULAR_A_STOCKS } from "./sina";
+
+// ---- Data source identity ----
+
+/** Provider identifiers reported by the market API routes (`meta.source`). */
+export type MarketDataSource = "sina" | "tencent" | "eastmoney" | "yahoo" | "mock" | "api";
+
+/** Human-readable badge labels for each provider. */
+const DATA_SOURCE_LABELS: Record<MarketDataSource, string> = {
+  sina: "新浪实时",
+  tencent: "腾讯实时",
+  eastmoney: "东方财富",
+  yahoo: "Yahoo 财经",
+  mock: "离线数据",
+  api: "实时数据",
+};
+
+/** Map an API `meta.source` value to its display label. */
+export function dataSourceLabel(source: string): string {
+  return DATA_SOURCE_LABELS[source as MarketDataSource] ?? DATA_SOURCE_LABELS.api;
+}
 
 // ---- Mock fallback data ----
 
@@ -67,7 +89,7 @@ export function getMockTickers(): TickerData[] {
 
 // ---- Real API (via Next.js route handlers) ----
 
-async function apiGet<T>(url: string, fallback: T): Promise<{ data: T; source: string }> {
+async function apiGet<T>(url: string, fallback: T): Promise<{ data: T; source: MarketDataSource }> {
   try {
     const res = await fetch(url);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);

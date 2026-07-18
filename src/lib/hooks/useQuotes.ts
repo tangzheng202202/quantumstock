@@ -1,12 +1,18 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import { fetchQuotes } from "@/lib/data/market";
+import { fetchQuotes, type MarketDataSource } from "@/lib/data/market";
 import { usePolling } from "./usePolling";
 import type { TickerData } from "@/types";
 import { toast } from "sonner";
 
-export type DataSource = "loading" | "live" | "mock";
+/**
+ * Quote provider identity: the raw `meta.source` from the API ("sina" |
+ * "tencent" | "mock" | ...), or "loading" before the first fetch resolves.
+ * Keep the real provider so the UI badge stays honest about where data
+ * comes from (e.g. Tencent fallback must not display as 新浪实时).
+ */
+export type DataSource = "loading" | MarketDataSource;
 
 export interface UseQuotesResult {
   tickers: TickerData[];
@@ -28,7 +34,7 @@ export function useQuotes(pollMs = 60000): UseQuotesResult {
     try {
       const result = await fetchQuotes();
       setTickers(result.data);
-      setDataSource(result.source === "mock" ? "mock" : "live");
+      setDataSource(result.source);
     } catch {
       setDataSource("mock");
       toast.warning("实时行情获取失败，显示离线数据", {

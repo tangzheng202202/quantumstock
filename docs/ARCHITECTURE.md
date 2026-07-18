@@ -11,8 +11,8 @@
 | UI | TailwindCSS + shadcn/ui + lucide-react | 亮/暗/系统三主题 |
 | 状态 | zustand v5（响应式本地状态）+ useSyncExternalStore | localStorage 持久化 |
 | 校验 | zod v3 | API 入参统一校验 |
-| 数据源 | 新浪财经 / 东方财富 / Yahoo Finance | 多源兜底 |
-| 测试 | Vitest + Testing Library (jsdom) + coverage-v8 | 115 用例 |
+| 数据源 | 新浪财经 / 腾讯财经 / 东方财富 / Yahoo Finance | 多源兜底 |
+| 测试 | Vitest + Testing Library (jsdom) + coverage-v8 | 122 用例 |
 | 质量 | ESLint 9 扁平配置 (eslint-config-next) | 0 error 门禁 |
 
 ## 2. 分层结构
@@ -40,6 +40,7 @@ src/
     ├── cache/              # 统一 CacheService（TTL + stale-while-revalidate）
     ├── data/               # 数据源层 ★
     │   ├── sina.ts         #   新浪（A/HK/US 实时行情、指数、搜索）
+    │   ├── tencent.ts      #   腾讯（qt.gtimg.cn，A/HK/US 行情与指数兜底）
     │   ├── yahoo.ts        #   Yahoo（美股兜底，国内不可达）
     │   └── eastmoney/      #   东财（按职责拆分 5 模块 + shared + barrel）
     │       ├── shared.ts   #     secid 解析、请求头、行类型
@@ -100,10 +101,14 @@ src/
 
 ### 3.5 数据源容错
 
+行情接口（quotes / indices / ticker）按 **新浪 → 腾讯 → mock** 链路降级，
+响应 `meta.source` 如实上报实际 provider（sina/tencent/eastmoney/yahoo/mock），
+前端徽章据此展示真实来源（`dataSourceLabel()`），不做"假直播"。
+
 | 市场 | 主源 | 兜底 |
 |---|---|---|
-| A 股/港股 | 新浪 | 东财 |
-| 美股 | 新浪 | Yahoo（国内不可达，预期降级） |
+| A 股/港股 | 新浪 | 腾讯（qt.gtimg.cn，GBK 编码，A 股量/额已换算为股/元） |
+| 美股 | 新浪 → 腾讯 | Yahoo（国内不可达，预期降级） |
 | 板块/财务/筛选 | 东财 | 无（mock 兜底，meta.source 标识） |
 
 ## 4. 已知技术债（详见 REFACTOR-PLAN.md §1.2）

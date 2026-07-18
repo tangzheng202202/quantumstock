@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { searchStocks, fetchQuotes, KNOWN_STOCKS } from "@/lib/data/market";
+import { searchStocks, fetchQuotes, KNOWN_STOCKS, dataSourceLabel } from "@/lib/data/market";
 import { getWatchlist, toggleWatchlist } from "@/lib/storage/watchlist";
 import { cn } from "@/lib/utils";
 import { Search, Loader2, X, RefreshCw, Star, Download } from "lucide-react";
@@ -146,7 +146,9 @@ export default function ScreenerPage() {
       const res = await fetch("/api/market/screener?sortBy=changePercent&sortOrder=desc&limit=500");
       if (res.ok) {
         const j = await res.json();
-        if (j.success && Array.isArray(j.data)) {
+        // Empty result means the upstream is effectively down — fall back
+        // rather than render a broken-looking empty table.
+        if (j.success && Array.isArray(j.data) && j.data.length > 0) {
           const mapped = j.data.map((item: any) => ({
             stock: {
               symbol: String(item.symbol ?? ""),
@@ -178,10 +180,11 @@ export default function ScreenerPage() {
       console.warn("[screener] Market API failed, falling back:", e);
       toast.warning("全量市场数据获取失败，降级为热门股", { id: "screener-fail" });
     }
-    // Fallback: load 15 popular stocks
+    // Fallback: load 15 popular stocks (badge reflects the real provider)
     try {
       const symbols = KNOWN_STOCKS.slice(0, 15).map(s => s.symbol);
-      const { data } = await fetchQuotes(symbols);
+      const { data, source } = await fetchQuotes(symbols);
+      setDataSource(source);
       setResults(data.map(t => ({ ...t, pe: null, roe: null, revenueGrowth: null, rsi: null, volRatio: "—", score: 50 })));
       enrichWithMetricsAsync(data).then(enriched => setResults(enriched));
     } catch { setDataSource("mock"); }
@@ -227,7 +230,7 @@ export default function ScreenerPage() {
     try {
       const { data, source } = await fetchQuotes([stock.symbol]);
       setDataSource(source);
-      // If Sina returned a real name, use it
+      // If the provider returned a real name, use it
       if (data.length > 0 && data[0].stock.name !== stock.symbol) {
         stock = { ...stock, name: data[0].stock.name };
       }
@@ -247,7 +250,12 @@ export default function ScreenerPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          {dataSource === "sina" && <span className="rounded-full bg-success/10 px-2.5 py-1 text-[10px] font-medium text-success">新浪实时</span>}
+          {dataSource !== "loading" && dataSource !== "mock" && (
+            <span className="rounded-full bg-success/10 px-2.5 py-1 text-[10px] font-medium text-success">{dataSourceLabel(dataSource)}</span>
+          )}
+          {dataSource === "mock" && (
+            <span className="rounded-full bg-muted px-2.5 py-1 text-[10px] font-medium text-muted-foreground">{dataSourceLabel(dataSource)}</span>
+          )}
           <button onClick={loadMarket} className="rounded-lg border border-border px-3 py-1.5 text-xs hover:bg-accent transition-all flex items-center gap-1">
             <RefreshCw className="h-3 w-3" /> 刷新
           </button>

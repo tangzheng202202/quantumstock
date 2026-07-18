@@ -10,6 +10,7 @@ import { StatCard } from "@/components/dashboard/StatCard";
 import { TickerRow } from "@/components/dashboard/TickerRow";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useQuotes, useMarketStats, useWatchlistQuotes } from "@/lib/hooks";
+import { dataSourceLabel } from "@/lib/data/market";
 import { Wifi, WifiOff, ChevronDown, ChevronUp, TrendingUp, TrendingDown } from "lucide-react";
 
 export default function DashboardPage() {
@@ -37,11 +38,11 @@ export default function DashboardPage() {
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold tracking-tight">市场仪表盘</h1>
         <div className="flex items-center gap-3">
-          {dataSource === "live" ? (
-            <span className="flex items-center gap-1 text-xs text-success"><Wifi className="h-3 w-3" /> 新浪实时</span>
-          ) : dataSource === "mock" ? (
-            <span className="flex items-center gap-1 text-xs text-muted-foreground"><WifiOff className="h-3 w-3" /> 离线数据</span>
-          ) : null}
+          {dataSource === "loading" ? null : dataSource === "mock" ? (
+            <span className="flex items-center gap-1 text-xs text-muted-foreground"><WifiOff className="h-3 w-3" /> {dataSourceLabel(dataSource)}</span>
+          ) : (
+            <span className="flex items-center gap-1 text-xs text-success"><Wifi className="h-3 w-3" /> {dataSourceLabel(dataSource)}</span>
+          )}
         </div>
       </div>
 
@@ -50,11 +51,12 @@ export default function DashboardPage() {
 
       {/* Quick Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard label="上涨家数" value={marketStats.gainers} suffix="全市场" accent="bull" bordered />
-        <StatCard label="下跌家数" value={marketStats.losers} suffix="全市场" accent="bear" bordered />
+        <StatCard label="上涨家数" value={marketStats.gainers} suffix={marketStats.scope} accent="bull" bordered />
+        <StatCard label="下跌家数" value={marketStats.losers} suffix={marketStats.scope} accent="bear" bordered />
         <StatCard
           label="今日成交额"
           value={marketStats.volume > 0 ? `${(marketStats.volume / 1e8).toFixed(0)}亿` : "—"}
+          suffix={marketStats.scope === "热门样本" ? marketStats.scope : undefined}
         />
         <StatCard
           label="市场情绪"
