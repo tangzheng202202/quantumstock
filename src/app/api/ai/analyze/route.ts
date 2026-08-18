@@ -165,7 +165,7 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error) {
-    const msg = sanitizeErrorMessage(error instanceof Error ? error.message : "未知错误");
+    const msg = sanitizeError(error instanceof Error ? error.message : "未知错误");
     console.error("[/api/ai/analyze] error:", msg);
     return NextResponse.json(
       { success: false, error: `分析服务暂时不可用，请稍后重试` },

@@ -67,17 +67,20 @@ describe("GET /api/market/ohlcv", () => {
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(json.success).toBe(true);
-    expect(json.meta.source).toBe("sina");
+    expect(json.meta.source).toBe("live");
     expect(json.data).toHaveLength(1);
   });
 
-  it("returns 502 when both Sina and EM fail for A-share", async () => {
+  it("returns empty data (not error) when all live sources fail for A-share", async () => {
     const { fetchEMKLine } = await import("@/lib/data/eastmoney");
     vi.mocked(fetchSinaKLine).mockRejectedValue(new Error("sina fail"));
     vi.mocked(fetchEMKLine).mockRejectedValue(new Error("em fail"));
     const res = await ohlcvGET(req("/api/market/ohlcv?symbol=600519"));
-    expect(res.status).toBe(502);
+    expect(res.status).toBe(200);
     const json = await res.json();
-    expect(json.code).toBe("UPSTREAM_ERROR");
+    expect(json.success).toBe(true);
+    // Phase 2 store contract: upstream failure yields empty bars with
+    // source "live", letting the client render a graceful empty state.
+    expect(json.data).toHaveLength(0);
   });
 });

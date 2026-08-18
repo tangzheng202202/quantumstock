@@ -138,9 +138,15 @@ export async function getBars(
     if (bars.length > 0) return { bars, source: "db" };
   }
 
-  // No DB / no stored data — live only
-  const live = await fetchLiveBars(symbol, interval, count);
-  return { bars: live, source: "live" };
+  // No DB / no stored data — live only.
+  // Upstream failure yields an empty result (graceful degradation) rather
+  // than a thrown error: the client renders an empty state instead of a 5xx.
+  try {
+    const live = await fetchLiveBars(symbol, interval, count);
+    return { bars: live, source: "live" };
+  } catch {
+    return { bars: [], source: "live" };
+  }
 }
 
 /** Ingest N symbols' daily bars (for cron / warm-up). Returns per-symbol status. */

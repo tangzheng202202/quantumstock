@@ -16,9 +16,9 @@ import {
   RotateCcw,
 } from "lucide-react";
 import { cn, sanitizeHtml } from "@/lib/utils";
-import { RiskDisclosure } from "@/components/compliance/RiskDisclosure";
 import { saveReport, deleteReport } from "@/lib/storage/report-history";
 import { useReportHistory } from "@/lib/hooks/useReportHistory";
+import { RiskDisclosure } from "@/components/compliance/RiskDisclosure";
 import type { StockInfo } from "@/types";
 
 
@@ -124,9 +124,6 @@ function AIAnalysisContent() {
       // API keys are resolved server-side from the encrypted HttpOnly cookie
       // (configured in Settings) or env vars — no key material in the browser.
       const body = {
-=======
-      const body: any = {
->>>>>>> 773215a5 (商业级重构 Phase 1-3 首批：安全加固、数据地基、回测引擎下沉)
         stock: selectedStock,
         models: selectedModels,
         skills: selectedSkills,
@@ -432,9 +429,6 @@ ANTHROPIC_API_KEY=sk-ant-xxxxxx`}
                         .replace(/\n\n/g, '<br/><br/>')),
                     }}
                   />
-                  <div className="prose-wrapper mt-4">
-                    <RiskDisclosure variant="report" />
-                  </div>
                 </div>
               ) : (
                 <div className="flex flex-col items-center justify-center py-20 text-center">
@@ -475,9 +469,6 @@ ANTHROPIC_API_KEY=sk-ant-xxxxxx`}
                           {/* Deterministic pseudo-confidence derived from the model id
                               (render must stay pure — no Math.random). */}
                           置信度: {75 + (Array.from(modelId).reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 997, 7) % 15)}%
-=======
-                          模型评分（供参考，非投资建议）
->>>>>>> 773215a5 (商业级重构 Phase 1-3 首批：安全加固、数据地基、回测引擎下沉)
                         </p>
                       </div>
                     );
@@ -488,7 +479,8 @@ ANTHROPIC_API_KEY=sk-ant-xxxxxx`}
           )}
 
           {/* Report History — shown when there are saved reports */}
-          <ReportHistoryPanel />
+          <RiskDisclosure variant="report" className="mt-4" />
+        <ReportHistoryPanel />
         </div>
       </div>
     </div>
