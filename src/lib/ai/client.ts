@@ -4,6 +4,7 @@
  */
 
 import type { AIModel, AIProvider, AnalysisRequest, AnalysisResult, StockInfo } from "@/types";
+import { sanitizeErrorMessage } from "@/lib/utils/sanitize";
 
 // ---- Model Registry ----
 
@@ -249,15 +250,6 @@ function extractRating(content: string): number | undefined {
 function extractConfidence(content: string): number | undefined {
   const match = content.match(/confidence[:\s]+(\d+)%?/i);
   return match ? parseInt(match[1]) / 100 : undefined;
-}
-
-/** Strip API key fragments from error messages before logging or returning to client. */
-function sanitizeErrorMessage(msg: string): string {
-  // Remove common API key patterns: sk-xxxx, sk-ant-xxxx, etc.
-  return msg
-    .replace(/\b(sk-[a-zA-Z0-9_-]{20,})\b/g, "sk-***")
-    .replace(/\b(api[_-]?key[=:]\s*)[^\s,;)]+/gi, "$1***")
-    .replace(/\bBearer\s+\S+/gi, "Bearer ***");
 }
 
 // ---- Analysis Skills Registry ----

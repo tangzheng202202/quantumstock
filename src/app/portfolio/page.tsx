@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn, formatCurrency, formatPercent } from "@/lib/utils";
+import { getPortfolio, savePositions, saveCash, type PortfolioPosition } from "@/lib/db/repositories/portfolio";
 import {
   Briefcase,
   Plus,
@@ -15,18 +16,7 @@ import {
   Download,
 } from "lucide-react";
 
-interface Position {
-  symbol: string;
-  name: string;
-  quantity: number;
-  avgCost: number;
-  currency: string;
-}
-
-const STORAGE_KEY = "quantumstock:portfolio:positions";
-const CASH_KEY = "quantumstock:portfolio:cash";
-
-interface PositionWithPrice extends Position {
+interface PositionWithPrice extends PortfolioPosition {
   currentPrice: number;
   marketValue: number;
   pnl: number;
@@ -36,7 +26,7 @@ interface PositionWithPrice extends Position {
 }
 
 export default function PortfolioPage() {
-  const [positions, setPositions] = useState<Position[]>([]);
+  const [positions, setPositions] = useState<PortfolioPosition[]>([]);
   const [cash, setCash] = useState(1000000);
   const [pricedPositions, setPricedPositions] = useState<PositionWithPrice[]>([]);
   const [loading, setLoading] = useState(true);
@@ -45,23 +35,20 @@ export default function PortfolioPage() {
   const [showImport, setShowImport] = useState(false);
   const [importText, setImportText] = useState("");
 
-  // Load from localStorage
+  // Load from repository (DB-first with localStorage fallback)
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      const storedCash = localStorage.getItem(CASH_KEY);
-      if (stored) setPositions(JSON.parse(stored));
-      if (storedCash) setCash(parseFloat(storedCash));
-    } catch {}
-    setLoading(false);
+    getPortfolio().then(data => {
+      setPositions(data.positions);
+      setCash(data.cash);
+    }).finally(() => setLoading(false));
   }, []);
 
-  // Save to localStorage whenever changes
+  // Save to repository whenever changes
   useEffect(() => {
-    if (!loading) localStorage.setItem(STORAGE_KEY, JSON.stringify(positions));
+    if (!loading) savePositions(positions);
   }, [positions, loading]);
   useEffect(() => {
-    if (!loading) localStorage.setItem(CASH_KEY, String(cash));
+    if (!loading) saveCash(cash);
   }, [cash, loading]);
 
   // Fetch current prices for all positions

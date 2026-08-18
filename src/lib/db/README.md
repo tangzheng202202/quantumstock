@@ -26,8 +26,8 @@
  * ## Behavior Without Database
  *
  * If `DATABASE_URL` is not set, the app automatically falls back to
- * localStorage for Watchlist/Alert persistence. This preserves the
- * existing local-only experience.
+ * localStorage for Watchlist/Alert/Portfolio persistence. This preserves
+ * the existing local-only experience.
  *
  * ## Migrated Models
  *
@@ -38,15 +38,22 @@
  * | WatchlistItem | ✅ CRUD operations | lib/db/repositories/watchlist.ts |
  * | Alert | ✅ CRUD operations | lib/db/repositories/alerts.ts |
  * | Stock | ✅ Auto-upserted on add | lib/db/repositories/watchlist.ts |
+ * | Portfolio / Position | ✅ CRUD operations | lib/db/repositories/portfolio.ts |
+ *
+ * ### Phase 0-1 milestones (2026-06-30):
+ * - Removed old `lib/storage/watchlist.ts` — all pages now route through repositories
+ * - `sector/[name]/page.tsx` no longer reads localStorage directly
+ * - `alerts/page.tsx` and `portfolio/page.tsx` now use repository functions
+ * - Prisma seed script for 10热门A股
+ * - Clerk auth integration (middleware + sign-in/sign-up)
+ * - User migration API (/api/user/migrate)
+ * - AnalysisReport + Strategy + Backtest repositories
+ * - ApiKey AES-256-GCM server-side encryption
  *
  * ## Remaining Models (Future Work)
  *
- * - Portfolio / Position / PortfolioHistory
- * - AnalysisReport
- * - Strategy / BacktestResult
  * - Quote (historical price cache)
- * - Financial
- * - ApiKey (server-side encrypted storage)
+ * - Financial (cached PE/PB/ROE snapshots)
  */
 
 export {};

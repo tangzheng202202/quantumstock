@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { SMA, EMA, MACD, RSI, BollingerBands, ATR, detectCross } from "../index";
+import { SMA, EMA, MACD, RSI, BollingerBands, ATR, VWAP, VolumeProfile, detectCross } from "../index";
 
 describe("SMA", () => {
   it("should return nulls for first period-1 elements", () => {
@@ -149,5 +149,88 @@ describe("detectCross", () => {
     const slow = [3, 3, 3, 3];
     const result = detectCross(fast, slow);
     expect(result[3]).toBe("dead");
+  });
+
+  it("should return null when no cross occurs", () => {
+    const fast = [1, 2, 3, 4];
+    const slow = [5, 5, 5, 5];
+    const result = detectCross(fast, slow);
+    expect(result[3]).toBeNull();
+  });
+});
+
+describe("VWAP", () => {
+  it("should return increasing cumulative VWAP for constant price", () => {
+    const data = [
+      { high: 105, low: 95, close: 100, volume: 100 },
+      { high: 105, low: 95, close: 100, volume: 200 },
+      { high: 105, low: 95, close: 100, volume: 300 },
+    ];
+    const result = VWAP(data);
+    // All typical prices = 100, so VWAP = 100 throughout
+    expect(result[0]).toBeCloseTo(100, 1);
+    expect(result[1]).toBeCloseTo(100, 1);
+    expect(result[2]).toBeCloseTo(100, 1);
+  });
+
+  it("should weight by volume", () => {
+    const data = [
+      { high: 113, low: 107, close: 110, volume: 100 }, // typical = 110
+      { high: 123, low: 117, close: 120, volume: 100 }, // typical = 120
+    ];
+    const result = VWAP(data);
+    // Equal volumes, so VWAP should be average of 110 and 120
+    expect(result[0]).toBeCloseTo(110, 1);
+    expect(result[1]).toBeCloseTo(115, 1); // (110*100 + 120*100) / 200
+  });
+
+  it("should return null for zero volume", () => {
+    const data = [{ high: 100, low: 100, close: 100, volume: 0 }];
+    const result = VWAP(data);
+    expect(result[0]).toBeNull();
+  });
+});
+
+describe("VolumeProfile", () => {
+  it("should return correct number of bins", () => {
+    const data = Array.from({ length: 50 }, (_, i) => ({
+      close: 100 + Math.sin(i / 5) * 10,
+      volume: 1000 + i * 100,
+    }));
+    const result = VolumeProfile(data, 10);
+    expect(result.length).toBe(10);
+  });
+
+  it("should sum to 100%", () => {
+    const data = [
+      { close: 100, volume: 500 },
+      { close: 105, volume: 300 },
+      { close: 110, volume: 200 },
+    ];
+    const result = VolumeProfile(data, 5);
+    const totalPct = result.reduce((s, r) => s + r.pct, 0);
+    expect(totalPct).toBeCloseTo(100, 1);
+  });
+
+  it("should handle empty data", () => {
+    const result = VolumeProfile([], 10);
+    expect(result.length).toBe(0);
+  });
+});
+
+describe("ATR known values", () => {
+  it("should compute ATR for known dataset", () => {
+    const data = [
+      { high: 50, low: 45, close: 48 },
+      { high: 52, low: 46, close: 49 },
+      { high: 51, low: 47, close: 50 },
+      { high: 53, low: 48, close: 51 },
+      { high: 55, low: 50, close: 52 },
+    ];
+    const result = ATR(data, 3);
+    // All values should be positive
+    for (let i = 2; i < result.length; i++) {
+      expect(result[i]).toBeGreaterThan(0);
+    }
   });
 });

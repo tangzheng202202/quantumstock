@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { getAlerts, createAlert, updateAlert, deleteAlert, type AlertRecord } from "@/lib/db/repositories/alerts";
 import {
   Bell,
   BellOff,
@@ -16,22 +17,6 @@ import {
   RefreshCw,
 } from "lucide-react";
 
-interface AlertRule {
-  id: string;
-  type: "price_above" | "price_below" | "change_up" | "change_down";
-  symbol: string;
-  name: string;
-  value: number;        // price threshold OR change % threshold
-  isEnabled: boolean;
-  isTriggered: boolean;
-  triggeredAt: string | null;
-  lastChecked: string | null;
-  lastPrice: number | null;
-  createdAt: string;
-}
-
-const STORAGE_KEY = "quantumstock:alerts:rules";
-
 /** Send a browser notification for triggered alerts. */
 function sendNotification(title: string, body: string) {
   if (typeof window === "undefined" || !("Notification" in window)) return;
@@ -44,7 +29,7 @@ function sendNotification(title: string, body: string) {
   }
 }
 
-const ALERT_TYPE_META: Record<AlertRule["type"], { label: string; icon: typeof Bell; color: string }> = {
+const ALERT_TYPE_META: Record<AlertRecord["type"], { label: string; icon: typeof Bell; color: string }> = {
   price_above: { label: "价格上穿", icon: TrendingUp, color: "text-bull" },
   price_below: { label: "价格下穿", icon: TrendingUp, color: "text-bear" },
   change_up: { label: "涨幅超过", icon: TrendingUp, color: "text-bull" },
@@ -52,28 +37,20 @@ const ALERT_TYPE_META: Record<AlertRule["type"], { label: string; icon: typeof B
 };
 
 export default function AlertsPage() {
-  const [alerts, setAlerts] = useState<AlertRule[]>([]);
+  const [alerts, setAlerts] = useState<AlertRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [checking, setChecking] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [newAlert, setNewAlert] = useState({
     symbol: "",
-    type: "price_above" as AlertRule["type"],
+    type: "price_above" as AlertRecord["type"],
     value: "",
   });
 
-  // Load from localStorage
+  // Load from repository (DB-first with localStorage fallback)
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) setAlerts(JSON.parse(stored));
-    } catch {}
-    setLoading(false);
+    getAlerts().then(data => setAlerts(data)).finally(() => setLoading(false));
   }, []);
-
-  useEffect(() => {
-    if (!loading) localStorage.setItem(STORAGE_KEY, JSON.stringify(alerts));
-  }, [alerts, loading]);
 
   // Check all enabled alerts against live prices
   const checkAlerts = useCallback(async () => {
@@ -160,27 +137,30 @@ export default function AlertsPage() {
       }
     } catch {}
 
-    const rule: AlertRule = {
-      id: crypto.randomUUID(),
-      type: newAlert.type,
+    const record = await createAlert({
       symbol,
       name,
+      type: newAlert.type,
       value,
       isEnabled: true,
       isTriggered: false,
-      triggeredAt: null,
-      lastChecked: null,
-      lastPrice: null,
-      createdAt: new Date().toISOString(),
-    };
-    setAlerts(prev => [...prev, rule]);
+    });
+    setAlerts(prev => [...prev, record]);
     setNewAlert({ symbol: "", type: "price_above", value: "" });
     setShowForm(false);
   };
 
-  const removeAlert = (id: string) => setAlerts(prev => prev.filter(a => a.id !== id));
-  const toggleAlert = (id: string) =>
-    setAlerts(prev => prev.map(a => a.id === id ? { ...a, isEnabled: !a.isEnabled, isTriggered: false } : a));
+  const removeAlert = (id: string) => {
+    deleteAlert(id);
+    setAlerts(prev => prev.filter(a => a.id !== id));
+  };
+  const toggleAlert = (id: string) => {
+    const alert = alerts.find(a => a.id === id);
+    if (!alert) return;
+    const newEnabled = !alert.isEnabled;
+    updateAlert(id, { isEnabled: newEnabled, isTriggered: false });
+    setAlerts(prev => prev.map(a => a.id === id ? { ...a, isEnabled: newEnabled, isTriggered: false } : a));
+  };
 
   if (loading) {
     return (
@@ -252,7 +232,7 @@ export default function AlertsPage() {
               />
               <select
                 value={newAlert.type}
-                onChange={e => setNewAlert({ ...newAlert, type: e.target.value as AlertRule["type"] })}
+                onChange={e => setNewAlert({ ...newAlert, type: e.target.value as AlertRecord["type"] })}
                 className="rounded-lg border border-input bg-background px-3 py-2 text-sm"
               >
                 <option value="price_above">价格上穿</option>

@@ -15,13 +15,15 @@ import threading
 import urllib.request
 import json
 import re
-import ssl
+import os
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="QuantumStock Engine", version="1.0.0")
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
+app = FastAPI(title="QuantumStock Engine", version="1.1.0")
+
+_allowed_origins = [o.strip() for o in os.environ.get("QS_ALLOWED_ORIGINS", "http://localhost:3000").split(",") if o.strip()]
+app.add_middleware(CORSMiddleware, allow_origins=_allowed_origins, allow_credentials=True, allow_methods=["GET", "POST"], allow_headers=["*"])
 
 # ==================== Cache ====================
 
@@ -45,21 +47,24 @@ def cache_set(key: str, value: Any):
 # Sina's API is free, requires no token, works from China without VPN.
 # Format: http://hq.sinajs.cn/list=sh600519,sz300750,hk00700,gb_aapl
 
-SINA_MAP = {
-    # A-Share SSE
-    "600519": "sh600519", "601398": "sh601398", "688981": "sh688981",
-    "600036": "sh600036", "601318": "sh601318", "600900": "sh600900",
-    # A-Share SZSE
-    "300750": "sz300750", "000858": "sz000858", "300059": "sz300059",
-    "002594": "sz002594", "000001": "sz000001",
-    # HKEX
-    "00700": "hk00700", "09988": "hk09988", "03690": "hk03690",
-    # US stocks (Sina format: gb_xxxx)
-    "AAPL": "gb_aapl", "TSLA": "gb_tsla", "NVDA": "gb_nvda",
-    "MSFT": "gb_msft", "GOOGL": "gb_googl", "AMZN": "gb_amzn",
-    "META": "gb_meta", "TSM": "gb_tsm", "AMD": "gb_amd",
-    "INTC": "gb_intc", "BABA": "gb_baba",
-}
+def to_sina_code(symbol: str) -> Optional[str]:
+    """Map ANY internal symbol to Sina's code format — no hardcoded stock list.
+
+    Rules:
+      - 6-digit numeric starting with 6 → sh (SSE, incl. STAR 688)
+      - 6-digit numeric starting with 0/3 → sz (SZSE, incl. ChiNext 300/301)
+      - 5-digit numeric → hk (HKEX)
+      - alphabetic ticker → gb_<lower> (US)
+    """
+    s = symbol.strip()
+    if s.isdigit():
+        if len(s) == 6:
+            return ("sh" if s[0] == "6" else "sz") + s
+        if len(s) == 5:
+            return "hk" + s
+    elif s.isascii() and s.isalpha() and 1 <= len(s) <= 6:
+        return "gb_" + s.lower()
+    return None
 
 KNOWN_STOCKS = [
     {"symbol": "600519", "name": "贵州茅台", "market": "SSE", "sector": "白酒", "currency": "CNY"},
@@ -98,6 +103,15 @@ AK_INDICES = [
 ]
 
 
+def _from_sina_code(sn_code: str) -> str:
+    """Inverse of to_sina_code: strip sh/sz/hk/gb_ prefix."""
+    low = sn_code.lower()
+    for prefix in ("sh", "sz", "hk", "gb_"):
+        if low.startswith(prefix):
+            return sn_code[len(prefix):].upper() if prefix == "gb_" else sn_code[len(prefix):]
+    return sn_code
+
+
 def _sina_fetch(sina_codes: List[str]) -> Dict[str, Any]:
     """Fetch real-time quotes from Sina Finance API.
     Returns: dict mapping internal_symbol -> {open, high, low, close, volume, change, changePercent}
@@ -108,11 +122,7 @@ def _sina_fetch(sina_codes: List[str]) -> Dict[str, Any]:
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
     })
 
-    ctx = ssl.create_default_context()
-    ctx.check_hostname = False
-    ctx.verify_mode = ssl.CERT_NONE
-
-    resp = urllib.request.urlopen(req, context=ctx, timeout=10)
+    resp = urllib.request.urlopen(req, timeout=10)  # http endpoint; TLS ctx not needed
     text = resp.read().decode("gbk", errors="replace")
 
     results = {}
@@ -127,14 +137,8 @@ def _sina_fetch(sina_codes: List[str]) -> Dict[str, Any]:
         if not data or data == '""':
             continue
 
-        # Find the internal symbol
-        internal_sym = None
-        for k, v in SINA_MAP.items():
-            if v == sn_code:
-                internal_sym = k
-                break
-        if not internal_sym:
-            internal_sym = sn_code
+        # Recover the internal symbol from the sina code
+        internal_sym = _from_sina_code(sn_code)
 
         fields = data.split(",")
         try:
@@ -251,8 +255,8 @@ def _fetch_indices_sina():
 @app.get("/market/quotes")
 async def get_quotes(symbols: str = Query(default="")):
     """Batch fetch real-time quotes from Sina Finance."""
-    sym_list = ([s.strip() for s in symbols.split(",") if s.strip()][:15]
-                if symbols else list(SINA_MAP.keys())[:10])
+    sym_list = ([s.strip() for s in symbols.split(",") if s.strip()][:50]
+                if symbols else [s["symbol"] for s in KNOWN_STOCKS[:10]])
 
     cache_key = f"q:{','.join(sorted(sym_list))}"
     cached = cache_get(cache_key, ttl=3)  # 3s cache — Sina updates every 3-5s
@@ -260,7 +264,7 @@ async def get_quotes(symbols: str = Query(default="")):
         return {"success": True, "data": cached, "meta": {"source": "sina", "cached": True}}
 
     # Resolve sina codes
-    sina_codes = [SINA_MAP[s] for s in sym_list if s in SINA_MAP]
+    sina_codes = [c for c in (to_sina_code(s) for s in sym_list) if c]
 
     try:
         data = _sina_fetch(sina_codes)
@@ -400,14 +404,43 @@ def compute_rsi(data: List[float], period: int = 14):
     rsi[:period] = np.nan
     return {"values": rsi.tolist()}
 
-# ==================== Backtest ====================
+# ==================== Backtest (Phase 3: full engine in backtest.py) ====================
 
-@app.post("/backtest/run")
-def run_backtest(req: BacktestRequest):
-    if len(req.data) < 50: raise HTTPException(400, "Need 50+ points")
-    c = np.array([d.close for d in req.data])
-    if req.strategy == "dual_ma": return _bt_dual(c, req)
-    raise HTTPException(400, f"Unknown: {req.strategy}")
+from backtest import (
+    BacktestRequest as FullBacktestRequest,
+    MarketConstraints as BtMarketConstraints,
+    A_SHARE_MAIN, A_SHARE_GEM, UNRESTRICTED,
+)
+
+def _constraints_for(symbol: str) -> BtMarketConstraints:
+    """Infer market constraints from symbol (same rules as frontend)."""
+    if symbol and len(symbol) == 6 and symbol.isdigit():
+        if symbol.startswith("688") or symbol.startswith("300") or symbol.startswith("301"):
+            return A_SHARE_GEM
+        return A_SHARE_MAIN
+    return UNRESTRICTED
+
+@app.post("/backtest/v2")
+def run_backtest_v2(req: FullBacktestRequest):
+    """Full backtest engine: 4 strategies + A-share constraints (T+1/涨跌停/印花税/整手).
+
+    Request: { bars, strategyId, params, initialCapital?, commission?, market?, slippagePct? }
+    Falls back to UNRESTRICTED constraints when market omitted (front end can pass
+    inferred constraints via /backtest/v2/constraints).
+    """
+    try:
+        return {"success": True, "data": run_backtest_full(req)}
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        logger.exception("backtest v2 failed")
+        raise HTTPException(500, f"backtest error: {e}")
+
+from backtest import run_backtest as run_backtest_full
+
+@app.get("/backtest/v2/constraints")
+def backtest_constraints(symbol: str = Query(default="")):
+    return {"success": True, "data": _constraints_for(symbol).model_dump()}
 
 def _bt_dual(closes, req):
     fp, sp = req.params.get("fastPeriod",10), req.params.get("slowPeriod",30)

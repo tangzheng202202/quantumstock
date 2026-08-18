@@ -51,14 +51,4 @@ export function cnBgColor(value: number): string {
   return "bg-muted text-muted-foreground";
 }
 
-/**
- * Sanitize HTML content by stripping script tags and event handlers.
- * Used for AI-generated markdown content rendered via dangerouslySetInnerHTML.
- */
-export function sanitizeHtml(html: string): string {
-  return html
-    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "")
-    .replace(/\bon\w+\s*=\s*["'][^"']*["']/gi, "")
-    .replace(/\bon\w+\s*=\s*[^\s>]+/gi, "")
-    .replace(/<iframe\b[^<]*(?:(?!<\/iframe>)<[^<]*)*<\/iframe>/gi, "");
-}
+export { sanitizeHtml, sanitizeErrorMessage } from "./utils/sanitize";

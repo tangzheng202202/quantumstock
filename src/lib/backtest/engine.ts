@@ -1,6 +1,13 @@
 /**
  * Client-side strategy backtesting engine.
  * Computes real metrics from K-line data — no mock numbers.
+ *
+ * Supports A-share market constraints:
+ *   - Limit-up/down (10% for main board, 20% for STAR/ChiNext)
+ *   - T+1 settlement (cannot sell on same day as buy)
+ *   - Stamp tax on sells (0.1% for A-shares, 0% otherwise)
+ *   - Round-lot trading (multiples of 100 shares)
+ *   - Slippage model
  */
 
 export interface KLineBar {
@@ -10,7 +17,49 @@ export interface KLineBar {
   low: number;
   close: number;
   volume: number;
+  prevClose?: number; // needed for limit-up/down detection (A-shares)
 }
+
+/** Market-specific constraints. */
+export interface MarketConstraints {
+  /** Limit-up ratio (e.g. 0.10 for 10%). 0 = no limit. */
+  limitUp: number;
+  /** Limit-down ratio (e.g. -0.10 for -10%). 0 = no limit. */
+  limitDown: number;
+  /** T+1 settlement: cannot sell on same bar as buy. */
+  tPlusOne: boolean;
+  /** Stamp tax rate on sells (e.g. 0.001 for A-shares). */
+  stampTaxSell: number;
+  /** Round lot size (e.g. 100 for A-shares). */
+  lotSize: number;
+}
+
+/** Default A-share main board constraints. */
+export const A_SHARE_MAIN: MarketConstraints = {
+  limitUp: 0.10,
+  limitDown: -0.10,
+  tPlusOne: true,
+  stampTaxSell: 0.001,
+  lotSize: 100,
+};
+
+/** Default A-share STAR/ChiNext constraints (20% limit). */
+export const A_SHARE_GEM: MarketConstraints = {
+  limitUp: 0.20,
+  limitDown: -0.20,
+  tPlusOne: true,
+  stampTaxSell: 0.001,
+  lotSize: 100,
+};
+
+/** Unrestricted (US/HK/crypto) — no limits, no stamp tax, no T+1. */
+export const UNRESTRICTED: MarketConstraints = {
+  limitUp: 0,
+  limitDown: 0,
+  tPlusOne: false,
+  stampTaxSell: 0,
+  lotSize: 1,
+};
 
 export interface Trade {
   entryDate: string;
@@ -188,7 +237,9 @@ export function runBacktest(
   strategyId: string,
   params: StrategyParams,
   initialCapital = 1000000,
-  commission = 0.0003
+  commission = 0.0003,
+  market: MarketConstraints = UNRESTRICTED,
+  slippagePct = 0.0005
 ): BacktestResult {
   if (bars.length < 30) {
     throw new Error("K线数据不足，至少需要30个交易日");
@@ -204,7 +255,7 @@ export function runBacktest(
     default: throw new Error(`Unknown strategy: ${strategyId}`);
   }
 
-  // 2. Execute trades
+  // 2. Execute trades with market constraints
   const trades: Trade[] = [];
   let cash = initialCapital;
   let position = 0; // shares held
@@ -217,30 +268,64 @@ export function runBacktest(
   for (let i = 0; i < bars.length; i++) {
     const bar = bars[i];
     const signal = signals.find(s => s.index === i);
+    const prevClose = bar.prevClose ?? bar.open;
+
+    // Check limit-up/down status
+    const atLimitUp = market.limitUp > 0 && prevClose > 0
+      && bar.close >= prevClose * (1 + market.limitUp) * 0.999;
+    const atLimitDown = market.limitDown < 0 && prevClose > 0
+      && bar.close <= prevClose * (1 + market.limitDown) * 1.001;
 
     if (signal?.type === "buy" && position === 0) {
-      const maxShares = Math.floor(cash / signal.price / 100) * 100; // round lot
+      // Skip buy if at limit-up (cannot execute)
+      if (atLimitUp) {
+        equityCurve.push({ date: bar.date, value: cash });
+        continue;
+      }
+      // Apply slippage: buy at slightly higher price
+      const buyPrice = signal.price * (1 + slippagePct);
+      const lotSize = market.lotSize;
+      // Include commission in effective price so cost always fits within cash
+      const effectivePrice = buyPrice * (1 + commission);
+      const maxShares = lotSize === 1
+        ? Math.floor(cash / effectivePrice)
+        : Math.floor(cash / effectivePrice / lotSize) * lotSize;
       if (maxShares > 0) {
-        const cost = maxShares * signal.price * (1 + commission);
-        if (cost <= cash) {
-          cash -= cost;
-          position = maxShares;
-          entryPrice = signal.price;
-          entryDate = signal.date;
-          entryIndex = i;
-        }
+        const cost = maxShares * buyPrice * (1 + commission);
+        cash -= cost;
+        position = maxShares;
+        entryPrice = buyPrice;
+        entryDate = signal.date;
+        entryIndex = i;
       }
     } else if (signal?.type === "sell" && position > 0) {
-      const proceeds = position * signal.price * (1 - commission);
+      // Skip sell if at limit-down (cannot execute)
+      if (atLimitDown) {
+        const equity = cash + position * bar.close;
+        equityCurve.push({ date: bar.date, value: equity });
+        continue;
+      }
+      // T+1 check: cannot sell on same bar as buy
+      if (market.tPlusOne && i === entryIndex) {
+        const equity = cash + position * bar.close;
+        equityCurve.push({ date: bar.date, value: equity });
+        continue;
+      }
+      // Apply slippage: sell at slightly lower price
+      const sellPrice = signal.price * (1 - slippagePct);
+      const grossProceeds = position * sellPrice;
+      const stampTax = grossProceeds * market.stampTaxSell;
+      const proceeds = grossProceeds * (1 - commission) - stampTax;
       cash += proceeds;
-      const pnl = proceeds - position * entryPrice * (1 + commission);
-      const pnlPercent = (pnl / (position * entryPrice)) * 100;
+      const entryCost = position * entryPrice * (1 + commission);
+      const pnl = proceeds - entryCost;
+      const pnlPercent = (pnl / entryCost) * 100;
       const holdDays = i - entryIndex;
       trades.push({
         entryDate,
         exitDate: signal.date,
         entryPrice,
-        exitPrice: signal.price,
+        exitPrice: sellPrice,
         quantity: position,
         pnl,
         pnlPercent,
@@ -255,18 +340,26 @@ export function runBacktest(
     equityCurve.push({ date: bar.date, value: equity });
   }
 
-  // Close any open position at last bar
+  // Close any open position at last bar (if not at limit-down)
   if (position > 0) {
     const lastBar = bars[bars.length - 1];
-    const proceeds = position * lastBar.close * (1 - commission);
+    const prevClose = lastBar.prevClose ?? lastBar.open;
+    const atLimitDownLast = market.limitDown < 0 && prevClose > 0
+      && lastBar.close <= prevClose * (1 + market.limitDown) * 1.001;
+
+    const exitPrice = atLimitDownLast ? lastBar.close : lastBar.close * (1 - slippagePct);
+    const grossProceeds = position * exitPrice;
+    const stampTax = grossProceeds * market.stampTaxSell;
+    const proceeds = grossProceeds * (1 - commission) - stampTax;
     cash += proceeds;
-    const pnl = proceeds - position * entryPrice * (1 + commission);
-    const pnlPercent = (pnl / (position * entryPrice)) * 100;
+    const entryCost = position * entryPrice * (1 + commission);
+    const pnl = proceeds - entryCost;
+    const pnlPercent = entryCost > 0 ? (pnl / entryCost) * 100 : 0;
     trades.push({
       entryDate,
       exitDate: lastBar.date,
       entryPrice,
-      exitPrice: lastBar.close,
+      exitPrice,
       quantity: position,
       pnl,
       pnlPercent,

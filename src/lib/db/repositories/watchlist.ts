@@ -154,6 +154,23 @@ export async function removeFromWatchlist(symbol: string): Promise<boolean> {
   }
 }
 
+/** Check if a symbol is in the watchlist. */
+export async function isInWatchlist(symbol: string): Promise<boolean> {
+  const items = await getWatchlistItems();
+  return items.some((i) => i.symbol === symbol);
+}
+
+/** Toggle a stock in/out of the watchlist. Returns true if added, false if removed. */
+export async function toggleWatchlist(stock: StockInfo): Promise<boolean> {
+  if (await isInWatchlist(stock.symbol)) {
+    await removeFromWatchlist(stock.symbol);
+    return false;
+  } else {
+    await addToWatchlist(stock);
+    return true;
+  }
+}
+
 // ===== localStorage fallback (existing behavior) =====
 
 const LOCAL_KEY = "quantumstock:watchlist";

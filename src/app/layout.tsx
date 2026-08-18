@@ -5,6 +5,7 @@ import { Sidebar } from "@/components/layout/Sidebar";
 import { Header } from "@/components/layout/Header";
 import { KeyboardShortcuts } from "@/components/layout/KeyboardShortcuts";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { RiskDisclosure } from "@/components/compliance/RiskDisclosure";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -34,6 +35,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 <Header />
                 <main className="flex-1 overflow-auto bg-muted/30 p-4 md:p-6">
                   {children}
+                  <RiskDisclosure className="mt-6" />
                 </main>
                 {/* Mobile bottom navigation */}
                 <nav className="md:hidden flex items-center justify-around border-t border-border bg-card h-12 shrink-0 px-2">

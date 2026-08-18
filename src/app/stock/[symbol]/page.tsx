@@ -6,7 +6,7 @@ import Link from "next/link";
 import { ArrowLeft, TrendingUp, TrendingDown, BarChart3, RefreshCw, Star } from "lucide-react";
 import { CandlestickChart, type OHLCVBar } from "@/components/chart/CandlestickChart";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { isInWatchlist, toggleWatchlist } from "@/lib/storage/watchlist";
+import { isInWatchlist, toggleWatchlist } from "@/lib/db/repositories/watchlist";
 
 interface QuoteData {
   symbol: string;
@@ -53,7 +53,7 @@ export default function StockDetailPage() {
   const [watchlisted, setWatchlisted] = useState(false);
 
   // Check watchlist on mount
-  useEffect(() => { setWatchlisted(isInWatchlist(symbol)); }, [symbol]);
+  useEffect(() => { isInWatchlist(symbol).then(setWatchlisted); }, [symbol]);
 
   const isAShare = /^\d{6}$/.test(symbol);
 
@@ -187,12 +187,12 @@ export default function StockDetailPage() {
             )}
             <button
               onClick={() => {
-                const added = toggleWatchlist({
+                toggleWatchlist({
                   symbol,
                   name: quote?.name ?? symbol,
-                  market: quote?.market ?? "SSE",
-                });
-                setWatchlisted(added);
+                  market: (quote?.market as "SSE" | "SZSE" | "HKEX" | "NASDAQ" | "NYSE") ?? "SSE",
+                  currency: "CNY",
+                }).then(setWatchlisted);
               }}
               title={watchlisted ? "取消自选" : "加入自选"}
               className="ml-1 p-1.5 rounded-lg hover:bg-accent transition-all"

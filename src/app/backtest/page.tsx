@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn, formatCurrency, formatPercent } from "@/lib/utils";
-import { runBacktest, fetchBacktestData, type BacktestResult } from "@/lib/backtest/engine";
+import { runBacktestWithFallback, type BacktestResult } from "@/lib/backtest/server-client";
+import { fetchBacktestData } from "@/lib/backtest/engine";
 import {
   BarChart3,
   Play,
@@ -81,6 +82,8 @@ export default function BacktestPage() {
   const [result, setResult] = useState<BacktestResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const [engineUsed, setEngineUsed] = useState<"python" | "local" | null>(null);
+
   const handleRun = async () => {
     if (selectedStrategy.id === "custom") {
       setError("自定义策略需在「设置」中编写策略代码后启用");
@@ -90,6 +93,7 @@ export default function BacktestPage() {
     setError(null);
     setResult(null);
     setHasResult(false);
+    setEngineUsed(null);
 
     try {
       const bars = await fetchBacktestData(btSymbol, btRange);
@@ -98,8 +102,9 @@ export default function BacktestPage() {
         setIsRunning(false);
         return;
       }
-      const btResult = runBacktest(bars, selectedStrategy.id, params);
-      setResult(btResult);
+      const outcome = await runBacktestWithFallback(bars, selectedStrategy.id, params, { symbol: btSymbol });
+      setResult(outcome.result);
+      setEngineUsed(outcome.engine);
       setHasResult(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : "回测失败");
@@ -292,6 +297,9 @@ export default function BacktestPage() {
             </Card>
           ) : hasResult && result ? (
             <>
+              <p className="text-[10px] text-muted-foreground">
+                回测引擎：{engineUsed === "python" ? "Python 服务端（权威结果，含 A 股交易约束）" : "本地降级引擎（Python 引擎不可达）"}
+              </p>
               {/* Performance Metrics */}
               <div className="grid grid-cols-4 gap-3">
                 {[

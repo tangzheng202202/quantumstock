@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
+import { auth } from "@clerk/nextjs/server";
 import { runMultiModelAnalysis, AVAILABLE_MODELS } from "@/lib/ai/client";
-import { fetchAStockFinancials, fetchEMKLine } from "@/lib/data/eastmoney";
 import { readKeysFromRequest } from "@/lib/server/api-keys";
+import { resolveApiKeys } from "@/lib/ai/resolve-keys";
+import { fetchAStockFinancials, fetchEMKLine } from "@/lib/data/eastmoney";
 import type { AnalysisRequest, AIProvider } from "@/types";
+import { checkRateLimit, getClientKey, AI_RATE_LIMITS } from "@/lib/rate-limit";
 
 /** Strip API key fragments from error messages before logging or returning. */
 function sanitizeError(msg: string): string {
@@ -19,17 +22,43 @@ export const maxDuration = 60;
  * POST /api/ai/analyze
  * Multi-model AI analysis endpoint.
  *
- * Reads API keys from environment variables:
- *   - ANTHROPIC_API_KEY
- *   - OPENAI_API_KEY
- *   - DEEPSEEK_API_KEY
- *   - MINIMAX_API_KEY
- *
- * If no API keys are configured, returns 503 with a helpful message.
+ * Key resolution order (all server-side; plaintext keys never accepted in the body):
+ *   1. Env vars: ANTHROPIC_API_KEY / OPENAI_API_KEY / DEEPSEEK_API_KEY / MINIMAX_API_KEY
+ *   2. Encrypted HttpOnly cookie (user settings page)
+ *   3. Encrypted DB BYOK store (multi-device; requires DATABASE_URL + ENCRYPTION_KEY)
  */
 export async function POST(request: NextRequest) {
   try {
+    const { userId } = await auth();
+
+    // ---- Rate limiting (per user, or per IP when anonymous) ----
+    const rlKey = getClientKey(request, userId);
+    const perMin = checkRateLimit(`${rlKey}:min`, AI_RATE_LIMITS.perMinute);
+    const perHour = checkRateLimit(`${rlKey}:hour`, AI_RATE_LIMITS.perHour);
+    if (!perMin.allowed || !perHour.allowed) {
+      const rl = !perMin.allowed ? perMin : perHour;
+      return NextResponse.json(
+        { success: false, error: `请求过于频繁（限流：${AI_RATE_LIMITS.perMinute.limit}/分钟、${AI_RATE_LIMITS.perHour.limit}/小时），请 ${rl.retryAfterSeconds} 秒后重试` },
+        {
+          status: 429,
+          headers: {
+            "Retry-After": String(rl.retryAfterSeconds),
+            "X-RateLimit-Remaining": String(Math.min(perMin.remaining, perHour.remaining)),
+          },
+        }
+      );
+    }
+
     const body: AnalysisRequest = await request.json();
+
+    // Reject plaintext keys in the request body — keys must come from the
+    // cookie store or DB BYOK, never transit the API payload.
+    if ((body as any).apiKeys && Object.keys((body as any).apiKeys).length > 0) {
+      return NextResponse.json({
+        success: false,
+        error: "出于安全考虑，API Key 不再接受请求体传输。请在「设置 → AI模型」中保存密钥（服务端加密存储）。",
+      }, { status: 400 });
+    }
 
     if (!body.stock || !body.models?.length) {
       return NextResponse.json(
@@ -47,7 +76,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Load API keys from env
+    // 1) Env keys
     const apiKeys: Record<AIProvider, string> = {
       claude: process.env.ANTHROPIC_API_KEY ?? "",
       openai: process.env.OPENAI_API_KEY ?? "",
@@ -56,30 +85,19 @@ export async function POST(request: NextRequest) {
       local: "",
     };
 
-    // Merge keys from the encrypted HttpOnly cookie (user-configured via the
-    // settings page; overrides env so personal keys work on shared deployments)
+    // 2) Encrypted HttpOnly cookie overrides env (personal keys on shared deployments)
     const cookieKeys = readKeysFromRequest(request);
     if (cookieKeys.claude) apiKeys.claude = cookieKeys.claude;
     if (cookieKeys.openai) apiKeys.openai = cookieKeys.openai;
     if (cookieKeys.deepseek) apiKeys.deepseek = cookieKeys.deepseek;
     if (cookieKeys.minimax) apiKeys.minimax = cookieKeys.minimax;
 
-    // Merge client-provided keys (legacy/external-script path) — with format validation
-    if (body.apiKeys) {
-      const validate = (provider: string, key: string) => {
-        if (!key || key.length < 10) return false;
-        const patterns: Record<string, RegExp> = {
-          claude: /^sk-ant-[a-zA-Z0-9_-]{20,}$/,
-          openai: /^sk-(proj-)?[a-zA-Z0-9_-]{20,}$/,
-          deepseek: /^sk-[a-zA-Z0-9]{20,}$/,
-        };
-        return patterns[provider] ? patterns[provider].test(key) : key.length > 10;
-      };
-      if (validate("claude", body.apiKeys.claude)) apiKeys.claude = body.apiKeys.claude;
-      if (validate("openai", body.apiKeys.openai)) apiKeys.openai = body.apiKeys.openai;
-      if (validate("deepseek", body.apiKeys.deepseek)) apiKeys.deepseek = body.apiKeys.deepseek;
-      if (body.apiKeys.minimax && body.apiKeys.minimax.length > 10) apiKeys.minimax = body.apiKeys.minimax;
+    // 3) DB BYOK store fills remaining gaps (multi-device sync)
+    const dbKeys = await resolveApiKeys(userId);
+    for (const p of ["claude", "openai", "deepseek", "minimax"] as const) {
+      if (!apiKeys[p] && dbKeys[p]) apiKeys[p] = dbKeys[p];
     }
+
 
     // Filter models to only those with configured keys
     const availableModels = body.models.filter(id => {
@@ -113,7 +131,26 @@ export async function POST(request: NextRequest) {
     };
 
     // Run the multi-model analysis
+    const startTime = Date.now();
     const results = await runMultiModelAnalysis(enrichedRequest, apiKeys);
+    const duration = Date.now() - startTime;
+
+    // Audit log (structured, no API keys logged)
+    const auditLog = {
+      event: "ai_analysis",
+      timestamp: new Date().toISOString(),
+      symbol: body.stock.symbol,
+      models_used: availableModels,
+      models_skipped: body.models.filter(id => !availableModels.includes(id)),
+      results: results.map(r => ({
+        model: r.modelId,
+        tokens: r.tokensUsed ?? 0,
+        has_rating: r.rating != null,
+        confidence: r.confidence,
+      })),
+      duration_ms: duration,
+    };
+    console.log("[audit]", JSON.stringify(auditLog));
 
     return NextResponse.json({
       success: true,
@@ -124,10 +161,11 @@ export async function POST(request: NextRequest) {
         source: "multi-model-analysis",
         modelsUsed: availableModels,
         modelsSkipped: body.models.filter(id => !availableModels.includes(id)),
+        durationMs: duration,
       },
     });
   } catch (error) {
-    const msg = sanitizeError(error instanceof Error ? error.message : "未知错误");
+    const msg = sanitizeErrorMessage(error instanceof Error ? error.message : "未知错误");
     console.error("[/api/ai/analyze] error:", msg);
     return NextResponse.json(
       { success: false, error: `分析服务暂时不可用，请稍后重试` },

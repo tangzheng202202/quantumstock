@@ -236,14 +236,33 @@ model Alert {
   stock       Stock?    @relation(fields: [stockId], references: [id], onDelete: SetNull)
 }
 
+// ========== OHLCV (K-line persistence, Phase 2 OLAP-lite) ==========
+
+model OhlcvBar {
+  id        String   @id @default(cuid())
+  symbol    String
+  interval  String   // 1d | 1wk | 1mo
+  date      DateTime // bar date (trading day)
+  open      Float
+  high      Float
+  low       Float
+  close     Float
+  volume    Float
+  createdAt DateTime @default(now())
+
+  @@unique([symbol, interval, date])
+  @@index([symbol, interval, date(sort: Desc)])
+}
+
 // ========== API Keys ==========
 
 model ApiKey {
   id        String   @id @default(cuid())
   userId    String
   provider  String   // claude, openai, deepseek, etc.
-  keyHash   String   // hashed API key
-  maskedKey String   // sk-...xxxx
+  keyHash   String   // hashed API key (lookup/dedup only — cannot be reversed)
+  maskedKey String   // sk-...xxxx (display)
+  keyEnc    String?  // AES-256-GCM ciphertext (server-side decryptable; requires ENCRYPTION_KEY)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
