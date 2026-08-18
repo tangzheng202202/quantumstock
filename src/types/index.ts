@@ -124,7 +124,17 @@ export interface AnalysisResult {
   modelName: string;
   content: string;        // markdown
   rating?: number;        // 1-5
-  confidence?: number;    // 0-1
+  /** zod-validated structured block extracted from the model's json output */
+  structured?: {
+    rating: number;
+    summary: string;
+    bullish: string[];
+    bearish: string[];
+    keyMetrics: string[];
+    dataCaveats: string[];
+  };
+  /** DEPRECATED — LLM self-reported, not calibrated. Kept for DB compat only; never display. */
+  confidence?: number;
   skills: string[];
   createdAt: string;
   tokensUsed?: number;

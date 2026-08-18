@@ -5,6 +5,7 @@
 
 import type { AIModel, AIProvider, AnalysisRequest, AnalysisResult, StockInfo } from "@/types";
 import { sanitizeErrorMessage } from "@/lib/utils/sanitize";
+import { extractStructured, STRUCTURED_OUTPUT_INSTRUCTION } from "@/lib/ai/schema";
 
 // ---- Model Registry ----
 
@@ -100,11 +101,14 @@ Provide your analysis in the following structured format (use markdown):
 ### 3. Fundamental Analysis
 ### 4. Risk Assessment
 ### 5. Industry & Competitive Position
-### 6. AI-Generated Rating (1-5 stars) & Confidence Level (0-100%)
+### 6. AI-Generated Rating (1-5 stars)
 ### 7. Key Catalysts & Risks (3 each)
 ### 8. Recommendation (with specific price targets if applicable)
 
 Be specific, quantitative, and actionable. Cite relevant metrics.`;
+
+  // Phase 3: append the machine-readable JSON contract (parsed + zod-validated)
+  prompt += STRUCTURED_OUTPUT_INSTRUCTION;
 
   return prompt;
 }
@@ -211,6 +215,7 @@ export async function runMultiModelAnalysis(
       }
 
       const result = await client.analyze(prompt, model.id);
+      const structured = extractStructured(result.content);
 
       results.push({
         id: crypto.randomUUID(),
@@ -218,7 +223,8 @@ export async function runMultiModelAnalysis(
         modelId: model.id,
         modelName: model.name,
         content: result.content,
-        rating: extractRating(result.content),
+        rating: structured?.rating ?? extractRating(result.content),
+        structured: structured ?? undefined,
         confidence: extractConfidence(result.content),
         skills: request.skills,
         createdAt: new Date().toISOString(),

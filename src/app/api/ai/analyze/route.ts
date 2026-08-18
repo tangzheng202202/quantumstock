@@ -6,6 +6,7 @@ import { resolveApiKeys } from "@/lib/ai/resolve-keys";
 import { fetchAStockFinancials, fetchEMKLine } from "@/lib/data/eastmoney";
 import type { AnalysisRequest, AIProvider } from "@/types";
 import { checkRateLimit, getClientKey, AI_RATE_LIMITS } from "@/lib/rate-limit";
+import { prisma, hasDatabase } from "@/lib/db/prisma";
 
 /** Strip API key fragments from error messages before logging or returning. */
 function sanitizeError(msg: string): string {
@@ -151,6 +152,46 @@ export async function POST(request: NextRequest) {
       duration_ms: duration,
     };
     console.log("[audit]", JSON.stringify(auditLog));
+
+      // Phase 3: archive results to AnalysisReport (fire-and-forget; failure
+      // never blocks the response). Requires DATABASE_URL; silently skipped in dev.
+      if (hasDatabase && prisma) {
+        void (async () => {
+          try {
+            await prisma.stock.upsert({
+              where: { symbol: body.stock.symbol },
+              update: { name: body.stock.name },
+              create: {
+                symbol: body.stock.symbol,
+                name: body.stock.name,
+                market: (body.stock.market as string) ?? "SSE",
+                currency: (body.stock.currency as string) ?? "CNY",
+              },
+            });
+
+            const stock = await prisma.stock.findUnique({ where: { symbol: body.stock.symbol } });
+            if (!stock) return;
+
+            for (const r of results) {
+              if (r.content.startsWith("Analysis failed:")) continue;
+              await prisma.analysisReport.create({
+                data: {
+                  stockId: stock.id,
+                  userId: userId ?? null,
+                  modelId: r.modelId,
+                  skills: r.skills,
+                  content: r.content,
+                  rating: r.structured?.rating ?? r.rating ?? null,
+                  confidence: r.confidence ?? null,
+                },
+              });
+            }
+          } catch (e) {
+            console.warn("[analyze] archive skipped:", e instanceof Error ? e.message : e);
+          }
+        })();
+      }
+
 
     return NextResponse.json({
       success: true,
