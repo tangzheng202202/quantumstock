@@ -154,11 +154,14 @@ docker-compose.yml       # postgres + redis + app
 - [x] AI 分析结构化输出（zod schema 校验）— 未做，留待 Phase 3 第二批
 - [ ] 回测任务异步化（大参数寻优走任务队列 + SSE 进度）— 与 Phase 2 Redis 队列合并实施
 
-**Phase 4 — 商业化（并行）**
-- 计量计费：免费档（每日 N 次 AI 分析）+ Pro 档；Stripe/微信支付
-- 合规包：用户协议、隐私政策、数据源授权评估、免责声明
-- 可观测性：OpenTelemetry 全链路 + 数据源成功率看板 + LLM 成本看板
-- 削减 recharts，图表统一 lightweight-charts
+**Phase 4 — 商业化（首批完成 ✅ 2026-08-18，commit daefb252）**
+- [x] 计量地基：`UsageEvent` 表 + `src/lib/observability/usage.ts`——每次模型调用记账（fire-and-forget），静态 PRICING 表估成本，未知模型记 $0（不造假数字）；`usageSummary(days)` 聚合喂看板
+- [x] 运维看板 `GET /api/ops/dashboard?days=30`：用量汇总 + provider 健康分 + 缓存状态；ADMIN_EMAILS/OPS_DASHBOARD_TOKEN 授权，未配置默认 503 关闭；dev 无 Clerk 时 auth() 容错。实测：无配置 503、错 token 401
+- [x] 免责声明（RiskDisclosure 组件，Phase 1 已落地）
+- [ ] 配额执行（免费档 N 次/日，基于 UsageEvent 即可实现，待定价决策）
+- [ ] Stripe/微信支付接入（待商户资质）
+- [ ] 合规包完善（用户协议/隐私政策文本）
+- [ ] OpenTelemetry 全链路（当前为结构化日志 + ops 看板，够用为止）
 
 ---
 
