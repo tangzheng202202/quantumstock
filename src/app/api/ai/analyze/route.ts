@@ -7,6 +7,7 @@ import { fetchAStockFinancials, fetchEMKLine } from "@/lib/data/eastmoney";
 import type { AnalysisRequest, AIProvider } from "@/types";
 import { checkRateLimit, getClientKey, AI_RATE_LIMITS } from "@/lib/rate-limit";
 import { prisma, hasDatabase } from "@/lib/db/prisma";
+import { recordUsage } from "@/lib/observability/usage";
 
 /** Strip API key fragments from error messages before logging or returning. */
 function sanitizeError(msg: string): string {
@@ -135,6 +136,21 @@ export async function POST(request: NextRequest) {
     const startTime = Date.now();
     const results = await runMultiModelAnalysis(enrichedRequest, apiKeys);
     const duration = Date.now() - startTime;
+
+    // Phase 4 metering: one UsageEvent per model call (fire-and-forget)
+    for (const r of results) {
+      void recordUsage({
+        userId,
+        kind: "ai_analysis",
+        provider: AVAILABLE_MODELS.find(m => m.id === r.modelId)?.provider ?? "unknown",
+        model: r.modelId,
+        symbol: body.stock.symbol,
+        tokensOut: r.tokensUsed ?? 0,
+        latencyMs: Math.round(duration / Math.max(1, results.length)),
+        ok: !r.content.startsWith("Analysis failed:"),
+      });
+    }
+
 
     // Audit log (structured, no API keys logged)
     const auditLog = {

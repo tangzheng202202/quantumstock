@@ -254,6 +254,27 @@ model OhlcvBar {
   @@index([symbol, interval, date(sort: Desc)])
 }
 
+// ========== Usage metering (Phase 4 observability + billing groundwork) ==========
+
+model UsageEvent {
+  id        String   @id @default(cuid())
+  userId    String?  // null = anonymous (IP-keyed rate limit already applies)
+  kind      String   // ai_analysis | backtest | market_query
+  provider  String   // model provider (claude/openai/deepseek/minimax) or data source
+  model     String?  // model id for ai_analysis
+  symbol    String?  // subject symbol when applicable
+  tokensIn  Int      @default(0)
+  tokensOut Int      @default(0)
+  costUsd   Float    @default(0) // estimated via PRICING table
+  latencyMs Int      @default(0)
+  ok        Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([kind, createdAt])
+  @@index([provider, createdAt])
+}
+
 // ========== API Keys ==========
 
 model ApiKey {
