@@ -442,6 +442,57 @@ from backtest import run_backtest as run_backtest_full
 def backtest_constraints(symbol: str = Query(default="")):
     return {"success": True, "data": _constraints_for(symbol).model_dump()}
 
+
+# ==================== K-line (Phase 2 backfill path) ====================
+# Node-side fetch is blocked by some proxy/TUN setups; the engine's urllib
+# path connects directly. Sina's kline endpoints now reject scripted access
+# and EastMoney is blocked by the local proxy, so we use Tencent's ifzq
+# fqkline API (verified reachable, no auth, proper JSON).
+
+@app.get("/market/kline")
+def get_kline(symbol: str = Query(...), days: int = Query(default=250, ge=10, le=1000)):
+    """Daily forward-adjusted K-line bars from Tencent. Symbol: 6-digit code."""
+    if not symbol.isdigit() or len(symbol) != 6:
+        raise HTTPException(400, "symbol must be a 6-digit A-share code")
+
+    sina_code = to_sina_code(symbol)  # e.g. sz000001 / sh600519 — same prefix scheme as Tencent
+    if not sina_code:
+        raise HTTPException(400, f"cannot resolve symbol: {symbol}")
+
+    cache_key = f"k:{symbol}:{days}"
+    cached = cache_get(cache_key, ttl=300)
+    if cached:
+        return {"success": True, "data": cached, "meta": {"source": "tencent", "cached": True}}
+
+    url = f"https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param={sina_code},day,,,{min(days, 800)},qfq"
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+    try:
+        text = urllib.request.urlopen(req, timeout=10).read().decode("utf-8", errors="replace")
+        j = json.loads(text)
+        # Response shape: data.{code}.{day|qfqday}: [[date, open, close, high, low, volume], ...]
+        node = j.get("data", {}).get(sina_code, {})
+        rows = node.get("qfqday") or node.get("day") or []
+        if not rows:
+            raise HTTPException(502, "no kline data")
+
+        bars = []
+        for r in rows:
+            # date, open, close, high, low, volume
+            bars.append({
+                "date": r[0],
+                "timestamp": int(datetime.strptime(r[0], "%Y-%m-%d").timestamp() * 1000),
+                "open": float(r[1]), "close": float(r[2]),
+                "high": float(r[3]), "low": float(r[4]),
+                "volume": int(float(r[5])),
+            })
+        cache_set(cache_key, bars)
+        return {"success": True, "data": bars, "meta": {"source": "tencent", "cached": False}}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.warning(f"kline fetch failed for {symbol}: {e}")
+        raise HTTPException(502, f"kline fetch failed: {e}")
+
 def _bt_dual(closes, req):
     fp, sp = req.params.get("fastPeriod",10), req.params.get("slowPeriod",30)
     f, s = np.full(len(closes), np.nan), np.full(len(closes), np.nan)

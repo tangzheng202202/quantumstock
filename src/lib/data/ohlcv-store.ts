@@ -38,24 +38,41 @@ function toISODate(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
 
-/** Live API chain: Sina for A-shares, EastMoney otherwise. Returns ISO-date bars. */
+/** Live API chain: Sina → Python engine (urllib direct) → EastMoney. Returns ISO-date bars. */
 export async function fetchLiveBars(symbol: string, interval: string, count: number): Promise<StoredBar[]> {
   const period = interval === "1wk" ? "weekly" : interval === "1mo" ? "monthly" : "daily";
+  const mapTs = (b: { timestamp: number; open: number; high: number; low: number; close: number; volume: number }): StoredBar =>
+    ({ date: toISODate(new Date(b.timestamp)), timestamp: b.timestamp, open: b.open, high: b.high, low: b.low, close: b.close, volume: b.volume });
+
   if (/^\d{6}$/.test(symbol)) {
     try {
       const bars = await fetchSinaKLine(symbol, Math.min(count, 250));
-      return bars.map(b => ({
-        date: toISODate(new Date(b.timestamp)),
-        timestamp: b.timestamp,
-        open: b.open, high: b.high, low: b.low, close: b.close, volume: b.volume,
-      }));
-    } catch {
-      const em = await fetchEMKLine(symbol, period, Math.min(count, 500));
-      return em.map(b => ({ date: toISODate(new Date(b.timestamp)), timestamp: b.timestamp, open: b.open, high: b.high, low: b.low, close: b.close, volume: b.volume }));
-    }
+      return bars.map(mapTs);
+    } catch { /* fall through to engine */ }
+
+    // Python engine (urllib direct-connect) — resilient when Node fetch is
+    // blocked by proxy/TUN setups on the host.
+    try {
+      const ENGINE = process.env.PYTHON_ENGINE_URL ?? "http://localhost:8000";
+      const res = await fetch(`${ENGINE}/market/kline?symbol=${symbol}&days=${Math.min(count, 1000)}`, {
+        signal: AbortSignal.timeout(10000),
+      });
+      if (res.ok) {
+        const j = await res.json();
+        if (j.success && Array.isArray(j.data) && j.data.length > 0) {
+          return j.data.map((b: { date: string; timestamp: number; open: number; high: number; low: number; close: number; volume: number }) => ({
+            date: b.date, timestamp: b.timestamp,
+            open: b.open, high: b.high, low: b.low, close: b.close, volume: b.volume,
+          }));
+        }
+      }
+    } catch { /* fall through to EM */ }
+
+    const em = await fetchEMKLine(symbol, period, Math.min(count, 500));
+    return em.map(mapTs);
   }
   const em = await fetchEMKLine(symbol, period, Math.min(count, 500));
-  return em.map(b => ({ date: toISODate(new Date(b.timestamp)), timestamp: b.timestamp, open: b.open, high: b.high, low: b.low, close: b.close, volume: b.volume }));
+  return em.map(mapTs);
 }
 
 /** Batch upsert bars into OhlcvBar. Silent no-op without DB. */
