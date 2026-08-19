@@ -9,6 +9,9 @@ vi.mock("@/lib/data/sina", () => ({
 vi.mock("@/lib/data/eastmoney", () => ({
   fetchEMKLine: vi.fn(),
 }));
+// Point the engine fallback at a dead port so tests exercise the mocked
+// chain deterministically (no dependency on a live engine process).
+vi.stubEnv("PYTHON_ENGINE_URL", "http://localhost:59999");
 
 import { GET as searchGET } from "@/app/api/market/search/route";
 import { GET as ohlcvGET } from "@/app/api/market/ohlcv/route";
