@@ -61,7 +61,7 @@ async function main() {
   const CHUNK = 200;
   for (let i = 0; i < symbols.length; i += CHUNK) {
     const chunk = symbols.slice(i, i + CHUNK);
-    const results = await ingestSymbols(chunk, "1d", 250);
+    const results = await ingestSymbols(chunk, "1d", 250, { onProgress: m => console.log("[backoff]", m) });
     for (const r of results) {
       if (r.ok) { ok++; totalBars += r.bars; }
       else { failed++; failures.push({ symbol: r.symbol, error: r.error ?? "?" }); }

@@ -35,7 +35,9 @@ function resolveSinaCode(symbol: string): string | null {
 
   // A-share: 6-digit numeric code
   if (/^\d{6}$/.test(symbol)) {
-    const prefix = symbol.startsWith("6") || symbol.startsWith("688") ? "sh" : "sz";
+    // BJSE (): 43xxxx/83xxxx/87xxxx/88xxxx/920xxx -> bj prefix
+    if (/^(4|8|92)/.test(symbol)) return "bj" + symbol;
+    const prefix = symbol.startsWith("6") ? "sh" : "sz";
     return prefix + symbol;
   }
 
@@ -343,6 +345,26 @@ export async function fetchSinaKLine(symbol: string, days = 120): Promise<KLineB
 
   const cacheKey = `sina:kline:${symbol}:${days}`;
   return cache.get(cacheKey, 300, async () => {
+    // BJSE (bj-prefixed) is not on the Sina kline API --
+    // use Tencent proxy.finance.qq.com newfqkline which supports bjXXXXXX.
+    if (sinaCode.startsWith("bj")) {
+      const url = `https://proxy.finance.qq.com/ifzqgtimg/appstock/app/newfqkline/get?param=${sinaCode},day,,,${days},qfq`;
+      const res = await fetch(url, { headers: REQ_HEADERS });
+      if (!res.ok) throw new Error(`Tencent K-line returned ${res.status}`);
+      const json = (await res.json()) as {
+        data?: Record<string, { qfqday?: string[][]; day?: string[][] }>;
+      };
+      const rows = json.data?.[sinaCode]?.qfqday ?? json.data?.[sinaCode]?.day ?? [];
+      if (rows.length === 0) throw new Error("No K-line data (Tencent/BJSE)");
+      return rows.map((r) => ({
+        timestamp: new Date(r[0]).getTime(),
+        open: parseFloat(r[1]),
+        high: parseFloat(r[2]),
+        low: parseFloat(r[3]),
+        close: parseFloat(r[4]),
+        volume: Math.round(parseFloat(r[5])),
+      }));
+    }
     const url = `${SINA_KLINE_URL}?symbol=${sinaCode}&scale=240&ma=no&datalen=${days}`;
     const res = await fetch(url, { headers: REQ_HEADERS });
     if (!res.ok) throw new Error(`Sina K-line returned ${res.status}`);

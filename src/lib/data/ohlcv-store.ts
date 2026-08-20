@@ -166,21 +166,41 @@ export async function getBars(
   }
 }
 
-/** Ingest N symbols' daily bars (for cron / warm-up). Returns per-symbol status. */
+/**
+ * Ingest N symbols' daily bars (for cron / warm-up). Returns per-symbol status.
+ * On upstream throttling (free APIs rate-limit burst traffic) retries with
+ * exponential backoff: 30s → 60s → 120s, max 3 attempts per symbol.
+ */
 export async function ingestSymbols(
   symbols: string[],
   interval = "1d",
-  count = 250
+  count = 250,
+  opts: { onProgress?: (msg: string) => void } = {}
 ): Promise<{ symbol: string; ok: boolean; bars: number; error?: string }[]> {
   const out: { symbol: string; ok: boolean; bars: number; error?: string }[] = [];
+  const log = opts.onProgress ?? (() => {});
+  const BACKOFFS = [30_000, 60_000, 120_000];
+
   for (const s of symbols) {
-    try {
-      const live = await fetchLiveBars(s, interval, count);
-      const written = await upsertBars(s, interval, live);
-      out.push({ symbol: s, ok: true, bars: written });
-    } catch (e) {
-      out.push({ symbol: s, ok: false, bars: 0, error: e instanceof Error ? e.message : String(e) });
+    let lastErr = "";
+    let done = false;
+    for (let attempt = 0; attempt <= BACKOFFS.length && !done; attempt++) {
+      try {
+        const live = await fetchLiveBars(s, interval, count);
+        if (live.length === 0) throw new Error("empty bars (upstream throttled?)");
+        const written = await upsertBars(s, interval, live);
+        out.push({ symbol: s, ok: true, bars: written });
+        done = true;
+      } catch (e) {
+        lastErr = e instanceof Error ? e.message : String(e);
+        if (attempt < BACKOFFS.length) {
+          const wait = BACKOFFS[attempt];
+          log(`throttled on ${s}, backing off ${wait / 1000}s (attempt ${attempt + 1})`);
+          await new Promise(r => setTimeout(r, wait));
+        }
+      }
     }
+    if (!done) out.push({ symbol: s, ok: false, bars: 0, error: lastErr });
   }
   return out;
 }
