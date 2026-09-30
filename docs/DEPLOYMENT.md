@@ -28,6 +28,7 @@
 
 > AI key 可来自服务端环境变量、设置页的加密 HttpOnly cookie，或登录用户的数据库 BYOK；分析请求体中的明文 key 会被拒绝。普通分析接口按 **cookie > env > 数据库 BYOK 补缺** 选取；流式分析接口按 **env > 数据库 BYOK 补缺** 选取，目前不读取设置页 cookie。
 > 个人使用可在「设置 → AI模型」页配置 cookie key；多设备数据库 BYOK 还须登录并配置数据库及 `ENCRYPTION_KEY`。
+> 设置页 Cookie 用当前 Clerk 用户身份进行认证绑定；本机匿名原型使用独立绑定值。旧版未绑定的 Cookie 会失效，用户需重新保存 key。共享浏览器切换账号时，前一账号的 Cookie key 不会供后一账号使用；单个 Cookie 仍只保存最近一次写入的账号的 key。
 
 ## 3. 构建与启动
 

@@ -94,7 +94,8 @@ src/
 
 - **API Key**：AES-256-GCM 加密存 HttpOnly Cookie（`qs_ai_keys`，SameSite=Strict，
   Path=/api）。客户端只能看到「已配置 + sk-...尾号」，永远读不到 key 本体。
-  服务端解析顺序：env 环境变量 > cookie > 请求体（兼容外部脚本）。
+  Cookie 密文与 Clerk 用户 ID 绑定；本机匿名原型使用独立归属。旧版未绑定 Cookie 拒绝读取。
+  普通分析接口解析顺序：当前用户 Cookie > 环境变量 > 数据库 BYOK 补缺；明文请求体 key 被拒绝。
 - **响应头**：CSP / X-Frame-Options / X-Content-Type-Options / Referrer-Policy /
   Permissions-Policy / HSTS(生产)。
 - **错误脱敏**：analyze 路由对错误消息中的 key 模式统一掩码。

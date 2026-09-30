@@ -3,10 +3,12 @@
  *
  * SECURITY MODEL (D1 fix):
  * - Keys live ONLY in an AES-256-GCM encrypted HttpOnly cookie, written by
- *   PUT /api/settings/keys. Client JavaScript can never read key material.
+ *   PUT /api/settings/keys and bound to the current Clerk user (or the
+ *   loopback prototype). Client JavaScript can never read key material.
  * - This module exposes configuration STATUS (configured + masked tail) and
  *   proxies save/clear/test operations to the server.
- * - Server API routes resolve keys in order: env vars → cookie → request body.
+ * - Analyze resolves keys from the owner-bound cookie, environment variables,
+ *   then database BYOK. Plaintext keys in the analysis body are rejected.
  */
 
 export type APIKeyRecord = Record<string, string>;

@@ -19,7 +19,7 @@ export async function POST(request: NextRequest) {
     const key: string | undefined =
       typeof bodyKey === "string" && bodyKey.length >= 10
         ? bodyKey
-        : readKeysFromRequest(request)[provider as keyof StoredKeys];
+        : readKeysFromRequest(request, identity.keyCookieOwner)[provider as keyof StoredKeys];
 
     if (!provider || !key || key.length < 10) {
       return NextResponse.json(

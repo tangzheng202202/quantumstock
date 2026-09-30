@@ -90,7 +90,7 @@ export async function POST(request: NextRequest) {
     };
 
     // 2) Encrypted HttpOnly cookie overrides env (personal keys on shared deployments)
-    const cookieKeys = readKeysFromRequest(request);
+    const cookieKeys = readKeysFromRequest(request, identity.keyCookieOwner);
     if (cookieKeys.claude) apiKeys.claude = cookieKeys.claude;
     if (cookieKeys.openai) apiKeys.openai = cookieKeys.openai;
     if (cookieKeys.deepseek) apiKeys.deepseek = cookieKeys.deepseek;

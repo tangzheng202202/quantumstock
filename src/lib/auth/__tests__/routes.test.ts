@@ -23,6 +23,14 @@ function request(path: string, method = "GET", host = "localhost"): NextRequest 
   });
 }
 
+function cookieRequest(path: string, cookie: string, method = "GET", body?: unknown): NextRequest {
+  return new NextRequest(`http://localhost:3000${path}`, {
+    method,
+    headers: { "Content-Type": "application/json", cookie },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+}
+
 function qmtRequest(token?: string): NextRequest {
   return new NextRequest("http://localhost:3000/api/portfolio/sync", {
     method: "POST",
@@ -146,5 +154,62 @@ describe("protected route boundaries", () => {
     expect((await opsDashboard(opsRequest())).status).toBe(200);
     vi.stubEnv("ADMIN_EMAILS", "other@example.com");
     expect((await opsDashboard(opsRequest())).status).toBe(401);
+  });
+
+  it("isolates saved cookie keys across Clerk accounts in status, testing, analysis, and updates", async () => {
+    for (const name of ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "DEEPSEEK_API_KEY", "MINIMAX_API_KEY"]) {
+      vi.stubEnv(name, "");
+    }
+    const deepseekKey = "sk-abcdef1234567890abcdef1234";
+    const claudeKey = "sk-ant-abcdef1234567890abcd";
+    clerkAuth.mockResolvedValue({ userId: "user_a" });
+    const savedA = await saveCookieKeys(cookieRequest("/api/settings/keys", "", "PUT", { keys: { deepseek: deepseekKey } }));
+    expect(savedA.status).toBe(200);
+    const cookieA = (savedA.headers.get("set-cookie") ?? "").split(";")[0];
+
+    clerkAuth.mockResolvedValue({ userId: "user_b" });
+    const statusB = await cookieKeys(cookieRequest("/api/settings/keys", cookieA));
+    expect((await statusB.json()).data.providers.deepseek.configured).toBe(false);
+
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("{}", { status: 401 }));
+    try {
+      const testedB = await testKey(cookieRequest("/api/ai/test-key", cookieA, "POST", { provider: "deepseek" }));
+      expect(testedB.status).toBe(400);
+      const analyzedB = await analyze(cookieRequest("/api/ai/analyze", cookieA, "POST", {
+        stock: { symbol: "600519", name: "Test", market: "SSE" },
+        models: ["deepseek-v4-flash"], skills: [], customPrompt: "",
+      }));
+      expect(analyzedB.status).toBe(503);
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+
+    const savedB = await saveCookieKeys(cookieRequest("/api/settings/keys", cookieA, "PUT", { keys: { claude: claudeKey } }));
+    expect(savedB.status).toBe(200);
+    const statusAfterB = (await savedB.json()).data.providers;
+    expect(statusAfterB.deepseek.configured).toBe(false);
+    expect(statusAfterB.claude.configured).toBe(true);
+    const cookieB = (savedB.headers.get("set-cookie") ?? "").split(";")[0];
+
+    clerkAuth.mockResolvedValue({ userId: "user_a" });
+    expect((await (await cookieKeys(cookieRequest("/api/settings/keys", cookieA))).json()).data.providers.deepseek.configured).toBe(true);
+    expect((await (await cookieKeys(cookieRequest("/api/settings/keys", cookieB))).json()).data.providers.claude.configured).toBe(false);
+  });
+
+  it("keeps the loopback prototype cookie separate from Clerk accounts", async () => {
+    vi.stubEnv("NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY", "");
+    vi.stubEnv("CLERK_SECRET_KEY", "");
+    const saved = await saveCookieKeys(cookieRequest("/api/settings/keys", "", "PUT", {
+      keys: { deepseek: "sk-abcdef1234567890abcdef1234" },
+    }));
+    expect(saved.status).toBe(200);
+    const prototypeCookie = (saved.headers.get("set-cookie") ?? "").split(";")[0];
+    expect((await (await cookieKeys(cookieRequest("/api/settings/keys", prototypeCookie))).json()).data.providers.deepseek.configured).toBe(true);
+
+    vi.stubEnv("NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY", "pk_test_" + "a".repeat(24));
+    vi.stubEnv("CLERK_SECRET_KEY", "sk_test_" + "b".repeat(24));
+    clerkAuth.mockResolvedValue({ userId: "user_a" });
+    expect((await (await cookieKeys(cookieRequest("/api/settings/keys", prototypeCookie))).json()).data.providers.deepseek.configured).toBe(false);
   });
 });

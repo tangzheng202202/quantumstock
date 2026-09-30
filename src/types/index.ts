@@ -114,7 +114,7 @@ export interface AnalysisRequest {
   skills: string[];       // skill IDs
   focusAreas?: string[];
   customPrompt?: string;
-  apiKeys?: Record<AIProvider, string>;  // client-provided API keys (overrides env vars)
+  apiKeys?: Record<AIProvider, string>;  // legacy input; analyze rejects nonempty plaintext keys
 }
 
 export interface AnalysisResult {

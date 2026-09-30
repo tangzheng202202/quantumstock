@@ -51,7 +51,7 @@ function buildStatus(keys: StoredKeys): Record<string, ProviderStatus> {
 export const GET = withApiHandler("settings.keys", async (req: NextRequest) => {
   const identity = await routeIdentity(req, { allowPrototype: true });
   if (identity.error) return identity.error;
-  return apiSuccess({ providers: buildStatus(readKeysFromRequest(req)) });
+  return apiSuccess({ providers: buildStatus(readKeysFromRequest(req, identity.keyCookieOwner)) });
 });
 
 export const PUT = withApiHandler("settings.keys", async (req: NextRequest) => {
@@ -69,7 +69,7 @@ export const PUT = withApiHandler("settings.keys", async (req: NextRequest) => {
     }
   }
 
-  const current = readKeysFromRequest(req);
+  const current = readKeysFromRequest(req, identity.keyCookieOwner);
   for (const [provider, key] of Object.entries(body.keys)) {
     const p = provider as keyof StoredKeys;
     if (key === "") delete current[p];
@@ -78,7 +78,7 @@ export const PUT = withApiHandler("settings.keys", async (req: NextRequest) => {
 
   const res = apiSuccess({ providers: buildStatus(current) });
   if (Object.keys(current).length === 0) clearKeysCookie(res);
-  else writeKeysCookie(res, current);
+  else writeKeysCookie(res, current, identity.keyCookieOwner);
   return res;
 });
 

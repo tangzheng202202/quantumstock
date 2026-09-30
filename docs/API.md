@@ -82,6 +82,7 @@
 
 - 响应**永不包含 key 本体**，只有 `masked: "sk-...尾4位"`。
 - key 格式服务端二次校验（`validateKeyFormat`），不合法 400。
+- Cookie 与当前 Clerk 用户绑定；本机匿名原型有独立归属。切换账号后，旧账号的 key 不会显示、用于测试或用于分析。旧版未绑定的 Cookie 不会读取，需在设置页重新保存 key。
 
 ## 组合同步 /api/portfolio/sync
 
