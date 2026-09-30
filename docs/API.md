@@ -1,7 +1,6 @@
 # QuantumStock API 契约
 
-> 所有 `/api/*` 路由（除 portfolio/sync 外）遵循统一响应契约，
-> 响应头统一携带 `x-trace-id` 用于问题追踪。
+> 多数业务路由遵循统一响应契约并携带 `x-trace-id`；流式分析、密钥测试、QMT 同步、运维看板和认证门控有独立响应。
 
 ## 统一响应格式
 
@@ -64,8 +63,8 @@
 }
 ```
 
-**API Key 解析顺序**：① 服务端环境变量 → ② 加密 HttpOnly Cookie（设置页配置）→ ③ 请求体 `apiKeys`（兼容外部脚本）。
-全部缺失时 `503`，`error` 指引配置途径，`configured` 列出已有 key 的来源。
+**API Key 解析顺序**：① 设置页加密 HttpOnly Cookie → ② 服务端环境变量 → ③ 数据库 BYOK 补缺。请求体 `apiKeys` 明文密钥会被拒绝；流式分析接口目前只读取环境变量与数据库 BYOK。
+全部缺失时 `503`，`error` 指引配置途径，`configured` 列出可用模型名称。
 自动注入实时行情/财务/K 线上下文（`buildMarketContext`）。
 
 ### `POST /api/ai/test-key`
@@ -88,6 +87,8 @@
 
 ⚠️ **独立扁平契约**（被外部 QMT Python 脚本消费，**不要改为统一响应形状**）。
 请求体经 zod `syncBodySchema` 校验（positions 数组：symbol/quantity/avgCost 等）。
+POST 还要求服务端配置至少 32 字符的 `QMT_SYNC_TOKEN`，并在请求体提供相同的 `token`；未配置返回 503，缺失或不匹配返回 401。QMT 脚本默认从同名环境变量读取令牌，缺令牌会在连接券商终端前退出。
+当前响应只确认接收并回显规范化持仓；服务端不持久化，脚本也没有把回显写入网页。不能将 HTTP 200 当成应用持仓已同步。
 
 ---
 

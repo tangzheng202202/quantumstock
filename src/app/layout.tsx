@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { ClerkProvider } from "@clerk/nextjs";
 import { ThemeProvider } from "next-themes";
 import { Toaster } from "sonner";
 import { Sidebar } from "@/components/layout/Sidebar";
@@ -7,6 +8,7 @@ import { KeyboardShortcuts } from "@/components/layout/KeyboardShortcuts";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { RiskDisclosure } from "@/components/compliance/RiskDisclosure";
 import "./globals.css";
+import { hasClerkPublishableKey } from "@/lib/auth/mode";
 
 export const metadata: Metadata = {
   title: {
@@ -23,7 +25,7 @@ export const viewport: Viewport = {
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
-  return (
+  const layout = (
     <html lang="zh-CN" suppressHydrationWarning>
       <body className="font-sans antialiased" suppressHydrationWarning>
         <ThemeProvider attribute="class" defaultTheme="light" enableSystem>
@@ -63,4 +65,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </body>
     </html>
   );
+  return hasClerkPublishableKey()
+    ? <ClerkProvider>{layout}</ClerkProvider>
+    : layout;
 }

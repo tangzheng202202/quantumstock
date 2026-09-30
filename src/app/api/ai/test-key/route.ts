@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { readKeysFromRequest, type StoredKeys } from "@/lib/server/api-keys";
+import { routeIdentity } from "@/lib/auth/server";
 
 export const dynamic = "force-dynamic";
 
@@ -11,6 +12,8 @@ export const dynamic = "force-dynamic";
  */
 export async function POST(request: NextRequest) {
   try {
+    const identity = await routeIdentity(request, { allowPrototype: true });
+    if (identity.error) return identity.error;
     const { provider, key: bodyKey } = await request.json();
 
     const key: string | undefined =

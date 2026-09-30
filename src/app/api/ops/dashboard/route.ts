@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
+import { timingSafeEqual } from "node:crypto";
 import { usageSummary } from "@/lib/observability/usage";
 import { providerRegistry } from "@/lib/data/providers";
 import { cache } from "@/lib/cache";
@@ -12,32 +13,40 @@ export const dynamic = "force-dynamic";
  * Operations dashboard: LLM cost/token usage + data-source health.
  *
  * Auth: requires ADMIN_EMAILS (comma-separated) to include the caller's
- * primary email, or OPS_DASHBOARD_TOKEN query param match. When neither is
- * configured, returns 503 (dashboard disabled) rather than opening it up.
+ * Clerk email, or a configured OPS_DASHBOARD_TOKEN in Authorization: Bearer.
+ * When neither is configured, returns 503 (dashboard disabled).
  */
 export async function GET(request: NextRequest) {
-  // auth() throws when Clerk middleware isn't installed (dev Mode A) —
-  // degrade to token-only authorization in that case.
-  let userId: string | null = null;
-  try {
-    const a = await auth();
-    userId = a.userId;
-  } catch {
-    userId = null;
+  const adminEmails = (process.env.ADMIN_EMAILS ?? "").split(",").map(e => e.trim().toLowerCase()).filter(Boolean);
+  const token = process.env.OPS_DASHBOARD_TOKEN ?? "";
+  const tokenConfigured = token.length >= 32;
+  if (!tokenConfigured && adminEmails.length === 0) {
+    return NextResponse.json({ success: false, error: "运维看板未配置授权" }, { status: 503 });
   }
 
-  const adminEmails = (process.env.ADMIN_EMAILS ?? "").split(",").map(e => e.trim().toLowerCase()).filter(Boolean);
-  const token = process.env.OPS_DASHBOARD_TOKEN;
-
-  const qToken = request.nextUrl.searchParams.get("token");
-  const authorized =
-    (token && qToken === token) ||
-    (adminEmails.length > 0 && userId != null && (await isAdminUser(userId, adminEmails)));
+  const header = request.headers.get("authorization") ?? "";
+  const provided = /^Bearer ([^\s]+)$/i.exec(header)?.[1] ?? "";
+  let authorized = false;
+  if (tokenConfigured && provided) {
+    const providedBytes = Buffer.from(provided);
+    const tokenBytes = Buffer.from(token);
+    authorized = providedBytes.length === tokenBytes.length && timingSafeEqual(providedBytes, tokenBytes);
+  }
+  if (!authorized && adminEmails.length > 0) {
+    // The public middleware route still runs clerkMiddleware, so a browser
+    // session can be read here without blocking a headless token client.
+    try {
+      const { userId } = await auth();
+      authorized = userId != null && await isAdminUser(userId, adminEmails);
+    } catch {
+      authorized = false;
+    }
+  }
 
   if (!authorized) {
     return NextResponse.json(
       { success: false, error: "未授权：配置 ADMIN_EMAILS 或 OPS_DASHBOARD_TOKEN 后访问" },
-      { status: token || adminEmails.length > 0 ? 401 : 503 }
+      { status: 401 }
     );
   }
 

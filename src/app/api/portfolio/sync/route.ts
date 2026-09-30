@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import { withApiHandler } from "@/lib/api/handler";
 import { ValidationError } from "@/lib/api/errors";
@@ -29,32 +30,35 @@ const positionSchema = z.object({
 });
 
 const syncBodySchema = z.object({
-  token: z.string().optional(),
+  token: z.string(),
   account: z.string().optional(),
   cash: z.number().optional(),
-  positions: z.array(positionSchema).min(1, "positions array required"),
+  positions: z.array(positionSchema),
 });
 
 /**
  * POST /api/portfolio/sync
- * Receive portfolio positions pushed from QMT (迅投) Python sync script.
+ * Receive portfolio positions pushed from QMT (迅投) Python script.
  * Response shape is intentionally flat (consumed by the external script).
+ * This endpoint currently only acknowledges and echoes positions; it does not
+ * persist them or update any browser session.
  */
 export const POST = withApiHandler("portfolio/sync", async (request: NextRequest) => {
+  const configuredToken = process.env.QMT_SYNC_TOKEN;
+  if (!configuredToken || configuredToken.length < 32) {
+    return NextResponse.json({ success: false, error: "QMT 同步令牌未配置或过短" }, { status: 503 });
+  }
   const raw = await request.json().catch(() => {
     throw new ValidationError("请求体必须是合法 JSON");
   });
+  const suppliedToken = raw && typeof raw === "object" && typeof raw.token === "string" ? raw.token : "";
+  const expected = Buffer.from(configuredToken);
+  const actual = Buffer.from(suppliedToken);
+  if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) {
+    return NextResponse.json({ success: false, error: "Invalid sync token" }, { status: 401 });
+  }
 
   const body = validate(syncBodySchema, raw);
-
-  // Optional token verification
-  const configToken = process.env.QMT_SYNC_TOKEN;
-  if (configToken && body.token !== configToken) {
-    return NextResponse.json(
-      { success: false, error: "Invalid sync token" },
-      { status: 401 }
-    );
-  }
 
   // Normalize each position
   const validPositions: SyncedPosition[] = body.positions.map((pos) => ({
@@ -67,7 +71,7 @@ export const POST = withApiHandler("portfolio/sync", async (request: NextRequest
     market: pos.market ?? "SSE",
   }));
 
-  // The client (QMT script) writes this to localStorage — no server session here.
+  // The QMT script only reads this acknowledgement; no storage occurs here.
   return NextResponse.json({
     success: true,
     received: validPositions.length,

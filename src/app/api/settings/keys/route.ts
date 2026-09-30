@@ -22,6 +22,7 @@ import {
   type StoredKeys,
 } from "@/lib/server/api-keys";
 import { validateKeyFormat } from "@/lib/storage/api-keys";
+import { routeIdentity } from "@/lib/auth/server";
 
 export const dynamic = "force-dynamic";
 
@@ -48,10 +49,14 @@ function buildStatus(keys: StoredKeys): Record<string, ProviderStatus> {
 }
 
 export const GET = withApiHandler("settings.keys", async (req: NextRequest) => {
+  const identity = await routeIdentity(req, { allowPrototype: true });
+  if (identity.error) return identity.error;
   return apiSuccess({ providers: buildStatus(readKeysFromRequest(req)) });
 });
 
 export const PUT = withApiHandler("settings.keys", async (req: NextRequest) => {
+  const identity = await routeIdentity(req, { allowPrototype: true });
+  if (identity.error) return identity.error;
   const body = validate(putBodySchema, await req.json());
 
   // Validate format of every provided key before persisting anything.
@@ -77,7 +82,9 @@ export const PUT = withApiHandler("settings.keys", async (req: NextRequest) => {
   return res;
 });
 
-export const DELETE = withApiHandler("settings.keys", async () => {
+export const DELETE = withApiHandler("settings.keys", async (req: NextRequest) => {
+  const identity = await routeIdentity(req, { allowPrototype: true });
+  if (identity.error) return identity.error;
   const res = apiSuccess({ providers: buildStatus({}) });
   clearKeysCookie(res);
   return res;

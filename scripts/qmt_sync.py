@@ -4,7 +4,7 @@ QuantumStock QMT 持仓同步脚本
 
 功能：
   通过 xtquant 连接 QMT 终端，获取实时持仓数据，
-  HTTP POST 推送到 QuantumStock 应用。
+  HTTP POST 发送到 QuantumStock 接收 API。当前 API 仅回显，不持久化到应用。
 
 使用前提：
   1. 已在支持 QMT 的券商（国金/华泰/中泰等）开通 QMT 权限
@@ -12,13 +12,15 @@ QuantumStock QMT 持仓同步脚本
   3. 已安装 xtquant 库: pip install xtquant
 
 用法：
+  先设置 QMT_SYNC_TOKEN 环境变量（与服务端相同，至少 32 字符）
   python qmt_sync.py                          # 单次同步
   python qmt_sync.py --interval 300           # 每5分钟自动同步
-  python qmt_sync.py --port 3001 --token xxx  # 指定端口和认证Token
+  python qmt_sync.py --port 3001              # 指定端口
 """
 
 import argparse
 import json
+import os
 import sys
 import time
 import urllib.request
@@ -28,7 +30,7 @@ from datetime import datetime
 def log(msg):
     print(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}")
 
-def get_qmt_positions():
+def get_qmt_positions(qmt_path=''):
     """通过 xtquant 获取 QMT 账户持仓"""
     try:
         from xtquant import xttrader, xtdata
@@ -36,8 +38,8 @@ def get_qmt_positions():
         log("ERROR: xtquant 未安装。请运行: pip install xtquant")
         sys.exit(1)
 
-    # QMT 终端默认路径（用户需根据实际安装路径修改）
-    qmt_path = r"C:\国金QMT交易端\userdata_mini"
+    # QMT 终端默认路径，可用 --qmt-path 覆盖。
+    qmt_path = qmt_path or r"C:\国金QMT交易端\userdata_mini"
     session_id = 123456
 
     log("正在连接 QMT 终端...")
@@ -112,9 +114,8 @@ def push_to_app(positions, cash, account, port, token):
         'positions': positions,
         'cash': cash,
         'account': account,
+        'token': token,
     }
-    if token:
-        payload['token'] = token
 
     data = json.dumps(payload).encode('utf-8')
     req = urllib.request.Request(url, data=data, headers={'Content-Type': 'application/json'})
@@ -123,7 +124,7 @@ def push_to_app(positions, cash, account, port, token):
         with urllib.request.urlopen(req, timeout=10) as resp:
             result = json.loads(resp.read())
             if result.get('success'):
-                log(f"✓ 同步成功: {result.get('received', 0)} 只持仓已推送到 QuantumStock")
+                log(f"✓ 服务端已接收 {result.get('received', 0)} 只持仓；当前未持久化到应用")
                 return True
             else:
                 log(f"✗ 同步失败: {result.get('error', 'unknown')}")
@@ -138,10 +139,13 @@ def push_to_app(positions, cash, account, port, token):
 def main():
     parser = argparse.ArgumentParser(description='QuantumStock QMT 持仓同步')
     parser.add_argument('--port', type=int, default=3001, help='QuantumStock 应用端口 (默认 3001)')
-    parser.add_argument('--token', type=str, default='', help='认证 Token (可选)')
+    parser.add_argument('--token', type=str, default='', help='认证 Token；默认读取 QMT_SYNC_TOKEN 环境变量')
     parser.add_argument('--interval', type=int, default=0, help='自动同步间隔秒数 (0=单次)')
     parser.add_argument('--qmt-path', type=str, default='', help='QMT userdata_mini 路径')
     args = parser.parse_args()
+    token = args.token or os.environ.get('QMT_SYNC_TOKEN', '')
+    if len(token) < 32:
+        parser.error('QMT_SYNC_TOKEN 或 --token 必须提供至少 32 字符的同步令牌')
 
     log("=" * 50)
     log("QuantumStock QMT 持仓同步脚本")
@@ -151,8 +155,8 @@ def main():
 
     while True:
         try:
-            positions, cash, account = get_qmt_positions()
-            push_to_app(positions, cash, account, args.port, args.token)
+            positions, cash, account = get_qmt_positions(args.qmt_path)
+            push_to_app(positions, cash, account, args.port, token)
         except Exception as e:
             log(f"同步异常: {e}")
 

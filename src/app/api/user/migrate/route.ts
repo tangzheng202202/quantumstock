@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
+import { routeIdentity } from "@/lib/auth/server";
 import { prisma, hasDatabase } from "@/lib/db/prisma";
 
 export const dynamic = "force-dynamic";
@@ -15,10 +15,9 @@ export const dynamic = "force-dynamic";
  * }
  */
 export async function POST(request: NextRequest) {
-  const { userId } = await auth();
-  if (!userId) {
-    return NextResponse.json({ success: false, error: "请先登录" }, { status: 401 });
-  }
+  const identity = await routeIdentity(request);
+  if (identity.error) return identity.error;
+  const userId = identity.userId!;
 
   if (!hasDatabase || !prisma) {
     return NextResponse.json({

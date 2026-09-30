@@ -1,6 +1,11 @@
 import { SignUp } from "@clerk/nextjs";
+import Link from "next/link";
+import { hasClerkPublishableKey } from "@/lib/auth/mode";
 
 export default function SignUpPage() {
+  if (!hasClerkPublishableKey()) {
+    return <p>注册尚未配置。<Link href="/">返回首页</Link></p>;
+  }
   return (
     <div className="flex min-h-screen items-center justify-center bg-background">
       <div className="w-full max-w-md px-4">

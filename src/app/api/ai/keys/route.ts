@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
+import { routeIdentity } from "@/lib/auth/server";
 import { prisma, hasDatabase } from "@/lib/db/prisma";
 import { encryptApiKey, maskApiKey } from "@/lib/db/repositories/api-key-repo";
 import { createHash } from "crypto";
@@ -37,9 +37,10 @@ const ENV_BY_PROVIDER: Record<string, string | undefined> = {
   minimax: process.env.MINIMAX_API_KEY,
 };
 
-export async function GET() {
-  const { userId } = await auth();
-  if (!userId) return NextResponse.json({ success: false, error: "请先登录" }, { status: 401 });
+export async function GET(request: NextRequest) {
+  const identity = await routeIdentity(request);
+  if (identity.error) return identity.error;
+  const userId = identity.userId!;
   if (!hasDatabase || !prisma) return unavailable();
 
   const rows = await prisma.apiKey.findMany({
@@ -59,8 +60,9 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
-  const { userId } = await auth();
-  if (!userId) return NextResponse.json({ success: false, error: "请先登录" }, { status: 401 });
+  const identity = await routeIdentity(request);
+  if (identity.error) return identity.error;
+  const userId = identity.userId!;
   if (!hasDatabase || !prisma || !byokEnabled()) return unavailable();
 
   const rl = checkRateLimit(`keys:${getClientKey(request, userId)}`, { limit: 20, windowSeconds: 3600 });
@@ -109,8 +111,9 @@ export async function POST(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  const { userId } = await auth();
-  if (!userId) return NextResponse.json({ success: false, error: "请先登录" }, { status: 401 });
+  const identity = await routeIdentity(request);
+  if (identity.error) return identity.error;
+  const userId = identity.userId!;
   if (!hasDatabase || !prisma) return unavailable();
 
   const provider = request.nextUrl.searchParams.get("provider");
