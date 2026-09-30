@@ -1,0 +1,10 @@
+.git
+node_modules
+.next
+coverage
+outputs
+.env
+.env.*
+!.env.example
+*.log
+python-engine/.venv
