@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { auth } from "@clerk/nextjs/server";
+import { routeIdentity } from "@/lib/auth/server";
 import { AVAILABLE_MODELS, buildAnalysisPrompt, ANALYSIS_SKILLS } from "@/lib/ai/client";
 import { resolveApiKeys } from "@/lib/ai/resolve-keys";
 import type { Market } from "@/types";
@@ -22,7 +22,9 @@ export const maxDuration = 120;
  *   symbol, name, market, models (comma-separated), skills (comma-separated)
  */
 export async function GET(request: NextRequest) {
-  const { userId } = await auth();
+  const identity = await routeIdentity(request, { allowPrototype: true });
+  if (identity.error) return identity.error;
+  const { userId } = identity;
 
   // Rate limit before opening the SSE stream
   const rlKey = getClientKey(request, userId);

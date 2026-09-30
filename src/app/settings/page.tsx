@@ -152,17 +152,17 @@ export default function SettingsPage() {
                 <CardHeader>
                   <CardTitle>API密钥配置</CardTitle>
                   <CardDescription>
-                    配置各AI模型的API密钥。密钥以Base64编码存储在浏览器本地。
+                    配置各AI模型的API密钥。密钥加密保存在 HttpOnly Cookie，并与登录账号或本机原型绑定。
                   </CardDescription>
                   <div className="mt-2 rounded-lg border border-warning/30 bg-warning/10 p-3">
                     <p className="text-xs text-success font-medium">🔒 密钥安全存储</p>
                     <p className="text-[10px] text-muted-foreground mt-1">
                       API Key 经 <strong>AES-256-GCM 加密</strong>后存储于 HttpOnly Cookie，浏览器脚本无法读取，
-                      仅在调用分析接口时由服务端解密使用。团队部署推荐在服务端
+                      仅供当前身份的分析和密钥测试使用。团队部署可在服务端
                       <code className="bg-muted px-1 rounded">.env.local</code> 中配置环境变量
                       <code className="bg-muted px-1 rounded">ANTHROPIC_API_KEY</code> /
                       <code className="bg-muted px-1 rounded">OPENAI_API_KEY</code> /
-                      <code className="bg-muted px-1 rounded">DEEPSEEK_API_KEY</code>（优先级最高）。
+                      <code className="bg-muted px-1 rounded">DEEPSEEK_API_KEY</code>（未保存个人密钥时使用）。
                     </p>
                   </div>
                 </CardHeader>

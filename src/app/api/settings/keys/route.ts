@@ -22,6 +22,7 @@ import {
   type StoredKeys,
 } from "@/lib/server/api-keys";
 import { validateKeyFormat } from "@/lib/storage/api-keys";
+import { routeIdentity } from "@/lib/auth/server";
 
 export const dynamic = "force-dynamic";
 
@@ -48,10 +49,14 @@ function buildStatus(keys: StoredKeys): Record<string, ProviderStatus> {
 }
 
 export const GET = withApiHandler("settings.keys", async (req: NextRequest) => {
-  return apiSuccess({ providers: buildStatus(readKeysFromRequest(req)) });
+  const identity = await routeIdentity(req, { allowPrototype: true });
+  if (identity.error) return identity.error;
+  return apiSuccess({ providers: buildStatus(readKeysFromRequest(req, identity.keyCookieOwner)) });
 });
 
 export const PUT = withApiHandler("settings.keys", async (req: NextRequest) => {
+  const identity = await routeIdentity(req, { allowPrototype: true });
+  if (identity.error) return identity.error;
   const body = validate(putBodySchema, await req.json());
 
   // Validate format of every provided key before persisting anything.
@@ -64,7 +69,7 @@ export const PUT = withApiHandler("settings.keys", async (req: NextRequest) => {
     }
   }
 
-  const current = readKeysFromRequest(req);
+  const current = readKeysFromRequest(req, identity.keyCookieOwner);
   for (const [provider, key] of Object.entries(body.keys)) {
     const p = provider as keyof StoredKeys;
     if (key === "") delete current[p];
@@ -73,11 +78,13 @@ export const PUT = withApiHandler("settings.keys", async (req: NextRequest) => {
 
   const res = apiSuccess({ providers: buildStatus(current) });
   if (Object.keys(current).length === 0) clearKeysCookie(res);
-  else writeKeysCookie(res, current);
+  else writeKeysCookie(res, current, identity.keyCookieOwner);
   return res;
 });
 
-export const DELETE = withApiHandler("settings.keys", async () => {
+export const DELETE = withApiHandler("settings.keys", async (req: NextRequest) => {
+  const identity = await routeIdentity(req, { allowPrototype: true });
+  if (identity.error) return identity.error;
   const res = apiSuccess({ providers: buildStatus({}) });
   clearKeysCookie(res);
   return res;

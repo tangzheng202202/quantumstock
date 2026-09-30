@@ -156,7 +156,7 @@ docker-compose.yml       # postgres + redis + app
 
 **Phase 4 — 商业化（首批完成 ✅ 2026-08-18，commit daefb252）**
 - [x] 计量地基：`UsageEvent` 表 + `src/lib/observability/usage.ts`——每次模型调用记账（fire-and-forget），静态 PRICING 表估成本，未知模型记 $0（不造假数字）；`usageSummary(days)` 聚合喂看板
-- [x] 运维看板 `GET /api/ops/dashboard?days=30`：用量汇总 + provider 健康分 + 缓存状态；ADMIN_EMAILS/OPS_DASHBOARD_TOKEN 授权，未配置默认 503 关闭；dev 无 Clerk 时 auth() 容错。实测：无配置 503、错 token 401
+- [x] 运维看板 `GET /api/ops/dashboard?days=30`：用量汇总 + provider 健康分 + 缓存状态；ADMIN_EMAILS/OPS_DASHBOARD_TOKEN 授权，未配置默认 503 关闭；机器令牌通过 `Authorization: Bearer` 请求头传递，错误令牌返回 401。
 - [x] 免责声明（RiskDisclosure 组件，Phase 1 已落地）
 - [ ] 配额执行（免费档 N 次/日，基于 UsageEvent 即可实现，待定价决策）
 - [ ] Stripe/微信支付接入（待商户资质）

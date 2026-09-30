@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
+import { routeIdentity } from "@/lib/auth/server";
 import { runMultiModelAnalysis, AVAILABLE_MODELS } from "@/lib/ai/client";
 import { readKeysFromRequest } from "@/lib/server/api-keys";
 import { resolveApiKeys } from "@/lib/ai/resolve-keys";
@@ -31,7 +31,9 @@ export const maxDuration = 60;
  */
 export async function POST(request: NextRequest) {
   try {
-    const { userId } = await auth();
+    const identity = await routeIdentity(request, { allowPrototype: true });
+    if (identity.error) return identity.error;
+    const { userId } = identity;
 
     // ---- Rate limiting (per user, or per IP when anonymous) ----
     const rlKey = getClientKey(request, userId);
@@ -88,7 +90,7 @@ export async function POST(request: NextRequest) {
     };
 
     // 2) Encrypted HttpOnly cookie overrides env (personal keys on shared deployments)
-    const cookieKeys = readKeysFromRequest(request);
+    const cookieKeys = readKeysFromRequest(request, identity.keyCookieOwner);
     if (cookieKeys.claude) apiKeys.claude = cookieKeys.claude;
     if (cookieKeys.openai) apiKeys.openai = cookieKeys.openai;
     if (cookieKeys.deepseek) apiKeys.deepseek = cookieKeys.deepseek;
